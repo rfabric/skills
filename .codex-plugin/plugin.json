@@ -1,0 +1,29 @@
+{
+  "name": "rfabric",
+  "version": "0.1.0",
+  "description": "rFabric agent skills and the rfabric MCP server: run rFabric workflows, such as sim asset builds, from Codex as your rFabric user.",
+  "author": {
+    "name": "rFabric",
+    "url": "https://rfabric.io"
+  },
+  "homepage": "https://rfabric.io",
+  "repository": "https://github.com/rfabric/skills",
+  "keywords": ["rfabric", "robotics", "simulation", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "rFabric",
+    "shortDescription": "Robotics workflows on rFabric",
+    "longDescription": "Skills for rFabric workflows that span several platform operations, such as building simulation environments for a robot with sim asset builds, and the rfabric MCP server that runs every rFabric API operation as your rFabric user. On first use you sign in to rFabric and approve access in the browser.",
+    "developerName": "rFabric",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://rfabric.io",
+    "defaultPrompt": [
+      "Build a simulation environment for my robot on rFabric."
+    ],
+    "brandColor": "#131417",
+    "composerIcon": "./assets/rfabric.svg",
+    "logo": "./assets/rfabric.svg"
+  }
+}

@@ -1,0 +1,5 @@
+# Names with the operationId shape (lowercase kebab-case words joined by dots)
+# that a skill writes in an inline code span but that are no operation, such as
+# permission names. One per line. The tests fail when a name here is an
+# operationId. Prefer rewording over adding a name.
+definition.author

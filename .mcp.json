@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "rfabric": {
+      "type": "http",
+      "url": "https://api.rfabric.io/mcp"
+    }
+  }
+}
