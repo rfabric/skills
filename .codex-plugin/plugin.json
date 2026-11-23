@@ -1,25 +1,27 @@
 {
   "name": "rfabric",
-  "version": "0.1.0",
-  "description": "rFabric agent skills and the rfabric MCP server: run rFabric workflows, such as sim asset builds, from Codex as your rFabric user.",
+  "version": "0.1.1",
+  "description": "rFabric agent skills and the rfabric MCP server: run rFabric workflows, from connecting storage and enrolling robots to training, evaluation and rollout, from Codex as your rFabric user.",
   "author": {
     "name": "rFabric",
     "url": "https://rfabric.io"
   },
   "homepage": "https://rfabric.io",
   "repository": "https://github.com/rfabric/skills",
-  "keywords": ["rfabric", "robotics", "simulation", "mcp"],
+  "keywords": ["rfabric", "robotics", "datasets", "training", "simulation", "evaluation", "fleet", "mcp"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "rFabric",
     "shortDescription": "Robotics workflows on rFabric",
-    "longDescription": "Skills for rFabric workflows that span several platform operations, such as building simulation environments for a robot with sim asset builds, and the rfabric MCP server that runs every rFabric API operation as your rFabric user. On first use you sign in to rFabric and approve access in the browser.",
+    "longDescription": "Skills for every rFabric workflow that spans several platform operations: setting up a workspace, storage, compute and CI, enrolling robots, collecting and preparing data, simulation, training, evaluation, rollout, fleet operations, automation and governance. Each skill keeps you informed step by step, including the steps you take in your cloud account, Git host or on a robot. The rfabric MCP server runs every rFabric API operation as your rFabric user. On first use you sign in to rFabric and approve access in the browser.",
     "developerName": "rFabric",
     "category": "Developer Tools",
     "capabilities": ["Read", "Write"],
     "websiteURL": "https://rfabric.io",
     "defaultPrompt": [
+      "What needs my attention in my rFabric workspace?",
+      "Connect my S3 bucket to rFabric and import its recordings.",
       "Build a simulation environment for my robot on rFabric."
     ],
     "brandColor": "#131417",

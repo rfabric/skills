@@ -1,101 +1,95 @@
 ---
 name: sim-asset-build
-description: Drive an rFabric sim asset build - turn a prompt and a published robot description version into simulation assets (objects and an assembled OpenUSD or MJCF scene) - through the tools of the `rfabric` MCP server. Use when asked to build, generate or plan a simulation environment, scene, course or objects for a robot on rFabric, to review or edit a build's plan, to review, reject, rebuild or qualify its outputs, or to continue a build that ran out of budget. Also use to add the robot model a build needs - import it from the asset catalog or a GitHub or Hugging Face repository, upload it from local files, convert it to MJCF or OpenUSD, or check an imported model's source for updates.
+description: >-
+  Simulation assets for a robot, built by rFabric from a prompt - objects and an assembled OpenUSD or MJCF scene, validated, qualified for evaluation and published. Use when asked to build, generate or plan a simulation environment, scene, course or objects for a robot, to review or edit a build's plan, to review, reject, rebuild, qualify or publish its outputs, or to continue a build that failed or ran out of budget. Also adds the robot model a build needs. Not for registering existing scenes or a simulator: `simulator-setup`.
 ---
 
-# rFabric sim asset builds
+# Sim asset build
 
-A **sim asset build** (`smab_...`) turns a prompt, one published `robot_description` sim asset version per target format and the target formats (`mjcf` for MuJoCo, `openusd` for Isaac Sim) into simulation assets. rFabric runs each step as a digest-pinned builder image on its compute and records every input and output:
+A **sim asset build** (SimAssetBuild, `smab_...`) turns a prompt, one published robot model per target format and the target formats (`mjcf` for MuJoCo, `openusd` for Isaac Sim) into simulation assets: one SimAsset version (`smav_...`) per object and one assembled scene per format. rFabric runs each step as a digest-pinned builder image on its compute and records every input, output, model call, fetched source and usage against the budget.
 
-1. `plan` writes the **plan**: the robot brief, the course layout, a concept image, an inventory of items with reference crops, assumptions and the sources it read. The build waits in `awaiting_plan_approval`.
-2. You review, optionally edit, and approve the plan by its `planSha256`.
-3. One step per inventory item: `import:<key>` (a library item fetched at a pinned commit) or `object:<key>` (a generated object). Each registers one draft sim asset version per target format.
-4. One `assemble:<format>` step per target format composes the **scene** from the robot and the item versions.
-5. rFabric validates every output, renders a thumbnail and a turntable, and grants a qualification level up to `perception_eval`. The build waits in `awaiting_review`.
-6. You review the outputs: qualify each at `interaction_eval`, or revise the build from the step whose output is wrong, with notes.
+The user reviews twice: the **plan** before anything is built, and the **outputs** before they are qualified for evaluation and published.
 
-Every action is recorded on the build: its revisions, each step's compute task, model calls, fetched sources and usage against the budget.
+Apply `rfabric-basics` throughout: it defines what to tell the user at each moment and how to call rFabric.
 
-## Calling rFabric
+## At a glance
 
-The `rfabric` MCP server is connected; every call runs as the signed-in user in the organization they authorized. Each step below names an operation by its `operationId`:
+| # | Step | Who | Operations | Wait |
+| --- | --- | --- | --- | --- |
+| 1 | Find the robot model, start the build | agent | `sim-assets.list`, `sim-assets.list-versions`, `sim-asset-builds.reference-images`, `sim-asset-builds.create` | none |
+| 2 | Wait for the plan | agent | `sim-asset-builds.get` | until `awaiting_plan_approval` |
+| 3 | Review the plan, edit it, approve it | user decides, agent calls | `sim-asset-builds.list-plan`, `sim-asset-builds.contents`, `sim-asset-builds.replace-plan`, `sim-asset-builds.plan-approve` | the user's review |
+| 4 | Wait for the outputs, check them | agent, then user looks at previews | `sim-asset-builds.get`, `sim-asset-builds.outputs`, `operations.list` | until `awaiting_review`, then until validation and previews settle |
+| 5 | Qualify, reject or rebuild each output | user decides, agent calls | `sim-assets.versions-qualify`, `sim-asset-builds.outputs-reject`, `sim-asset-builds.revisions` | a rebuild returns to step 2 or 4 |
+| 6 | Publish the accepted outputs | agent | `sim-assets.versions-publish` | none |
 
-1. `describe_operation` with the `operationId`, before every call: its method and path, whether it is `mutating`, the JSON Schemas of its path parameters, query, body and response, and its description.
-2. `call_operation` with `operationId`, `pathParameters`, `query` and `body` shaped by those schemas.
-3. `search_operations` finds an operation this skill does not name.
+Other operations: `sim-asset-builds.list` lists builds, `sim-asset-builds.update` raises the budget, `sim-asset-builds.resume` continues after budget exhaustion, `sim-asset-builds.cancel` stops a build.
 
-`call_operation` returns `{"status", "body"}`, `body` being the API's response: `{"data": ...}`, or `{"data": [...], "pagination": {...}}` for a list; read every page. A refusal is a tool error whose `body` is `{"error": {"code", "message", "correlationId", "details", "hint"}}`: act on `code`, `details` and `hint`, and quote `correlationId` when you report a problem.
-
-**Changes.** A `mutating` operation changes the platform as the user: say what it will change before you call it. The rFabric agent asks the user to approve every mutating call.
-
-**Bytes** never pass through the MCP server. Operations that move bytes return presigned URLs:
-
-- **Upload**: send the file, or one part of it, to the URL with the method and headers the operation returned. The rFabric agent calls `rfabric_upload` with the file's `path`, the `url` and, for one part, its `offset` and `length`; it returns the part's `etag`. Other agents send the request themselves.
-- **Download**: the rFabric agent calls `rfabric_download` with the `url` and a `path` in its working directory. Other agents GET the URL themselves.
-
-An upload first declares the file's size in bytes and its lowercase hex SHA-256.
-
-## Build operations
-
-| Step | `operationId` |
+| Build `status` | Meaning for the user |
 | --- | --- |
-| Upload a reference image | `sim-asset-builds.reference-images` |
-| Start a build | `sim-asset-builds.create` |
-| Follow it | `sim-asset-builds.get` |
-| List builds | `sim-asset-builds.list` |
-| Read the plan | `sim-asset-builds.list-plan` |
-| Edit the plan | `sim-asset-builds.replace-plan` |
-| Approve the plan | `sim-asset-builds.plan-approve` |
-| List the outputs | `sim-asset-builds.outputs` |
-| Reject an output, or reject and rebuild | `sim-asset-builds.outputs-reject` |
-| Rebuild from a step | `sim-asset-builds.revisions` |
-| Qualify a version | `sim-assets.versions-qualify` |
-| Raise the budget | `sim-asset-builds.update` |
-| Continue after budget exhaustion | `sim-asset-builds.resume` |
-| Cancel | `sim-asset-builds.cancel` |
+| `planning` | the plan is being written |
+| `awaiting_plan_approval` | the plan waits for the user; nothing else runs |
+| `building` | objects are being built, then the scene is assembled |
+| `awaiting_review` | every step succeeded; the outputs wait for the user |
+| `completed` | every output of the current revision is qualified at `interaction_eval` or rejected |
+| `failed` | a step failed (Problems) |
+| `budget_exhausted` | a budget counter reached its limit (Problems) |
+| `cancelled` | stopped on request |
 
-## Robot models
+## Before you start
 
-A build needs a published `robot_description` sim asset version per target format. When the workspace has none, import one, or upload it from local files. An imported version is a draft that records its `source` (`library`, `repository`, the `revision` asked for, the `commit` it resolved to, `path`) and holds the root document with every file it references; a conversion is a draft version with `provenance` `converted` and `conversion` (`sourceAssetVersionId`, `sourceContentHash`, `converter`).
+- **Permissions**:
 
-| Step | `operationId` |
-| --- | --- |
-| Browse the asset catalog | `sim-assets.catalog` |
-| Import a catalog entry | `sim-assets.catalog-import` |
-| Resolve a repository URL | `sim-assets.sources-resolve` |
-| Import from a repository | `sim-assets.imports` |
-| Create a sim asset | `sim-assets.create` |
-| Create a draft version | `sim-assets.create-versions` |
-| Start or resume a content upload | `sim-assets.versions-upload` |
-| Read the upload session | `sim-assets.versions-upload-sessions` |
-| Sign more part URLs | `sim-assets.versions-upload-sessions-parts` |
-| Complete the upload | `sim-assets.versions-upload-sessions-complete` |
-| Convert to MJCF or OpenUSD | `sim-assets.versions-convert` |
-| Check its source for an update | `sim-assets.versions-source-update` |
-| Publish a version | `sim-assets.versions-publish` |
-
-- **Catalog**: curated robots (MuJoCo Menagerie, work-r-labs/robots, robots_usd), each pinned to one commit. Importing an entry (`pathParameters` `key`, the entry's `key`) creates one version per format, each in that format's sibling `robot_description` asset; its description says how that asset is named and found.
-- **Repository**: `https://github.com/<owner>/<name>[/tree/<revision>/<dir> | /blob/<revision>/<path>]` or `https://huggingface.co/[datasets/|spaces/]<repository id>[...]`; a revision containing `/` goes in `revision`. Resolve first: it returns the `commit` and the `files` under the URL's directory; a file with a non-null `format` is a root document. Import one with `source` `{"library", "repository", "revision", "path"}`, the first three as resolve returned them and `path` a root document, and either `asset` `{"name", "slug"}` for a new asset or `simAssetId` to add a version to an existing one.
-- **Local files**: create the `robot_description` asset unless it exists, then a draft version with its `format` and, for a `.tar` or `.tar.gz` archive, `rootPath`, the root document inside it. Start the upload with the file's `sizeBytes` and `sha256`: it returns the upload session (`sessionId`, `status`, `parts` with presigned URLs). `status` `completed` means the content is already stored. Otherwise read the session for `partSizeBytes`, `partCount` and the `acknowledgedParts`; upload part n (from byte (n-1) x `partSizeBytes`, `partSizeBytes` long, the last part shorter) to its URL; sign the part URLs you lack with `fromPartNumber` and `toPartNumber`; then complete the session with every `{"partNumber", "etag"}`. A version accepts content once: create a new version to upload other bytes.
-- **Convert**: `urdf` or `xacro` to `mjcf` or `openusd`, `mjcf` to `openusd`; the version needs content. The result lands in the source asset's format sibling; the operation's description says how it is named and found.
-- **Wait**: an import or conversion returns `{asset, version, operation}`, a completed upload an `operationId`. Follow the Operation with `operations.get` until `succeeded`; a `failed` one carries an `error` whose `code` is `sim_asset_import_failed` or `sim_asset_conversion_failed` and whose message names the file. Validation and previews then run separately: read them as in step 4 of the workflow, then publish the version.
-- **Updates**: `sim-assets.versions-source-update` compares the commit the version's `revision` names now (`latestCommit`) with its `commit`; it changes nothing. Import an update as the next version of the same asset: `sim-assets.imports` with the response's `simAssetId` and the version's `source` without `commit`.
-- **Licence**: an imported or converted version without an SPDX licence needs a `License: <license>` line in the qualification notes.
-
-| Code | Status | Do |
+| To | Permission | Built-in roles |
 | --- | --- | --- |
-| `sim_asset_source_invalid` | 422 | not a GitHub or Hugging Face URL in the forms above (`url` or `repository` in `details`) |
-| `sim_asset_source_not_found` | 422 | the host does not serve the `repository` in `details` at its `revision` (or the directory): check the URL and revision; the repository must be public |
-| `sim_asset_source_path_invalid` | 422 | the `path` in `details` is not a sim asset file at its `commit`: pick a root document from resolve's `files` |
-| `sim_asset_conversion_unsupported` | 422 | no converter from the `sourceFormat` in `details` to its `format` |
-| `sim_asset_version_content_missing` | 409 | the version has no content yet: wait for its import or upload, then convert |
-| `sim_asset_version_not_imported` | 409 | the version has no `source`: only imported versions can be checked for updates |
+| start, cancel, resume or revise a build, edit and approve its plan, raise its budget; add a robot model | `evaluationDefinition:author` | operator, admin, owner |
+| qualify, reject or publish an output | `simAsset:publish` | operator, admin, owner |
 
-## Workflow
+  A 403 names the missing one in the API's own words: `definition.author` is `evaluationDefinition:author`, `simAsset.publish` is `simAsset:publish`.
+- **Needs**:
+  - a published `robot_description` sim asset version of the workspace in each target format. When the workspace has none, add one first: read [robot-models.md](robot-models.md);
+  - compute that runs build steps: `compute-setup` (Problems, `no_capable_pool`);
+  - a model the build may call: `model-vendor-credential` (Problems, `sim_asset_build_models_unavailable`).
+- **Ask the user**:
 
-### 1. Create
+| Input | Why | How to find it or default |
+| --- | --- | --- |
+| Prompt | what to build | the user's words; ask for sizes, counts and materials they care about |
+| Target formats | which simulator the assets are for | `mjcf` for MuJoCo, `openusd` for Isaac Sim; the formats their robot model exists in |
+| Robot | the build is laid out around it | list `robot_description` assets of the workspace; ask when more than one fits |
+| Budget | hard limits on model tokens, images and compute hours | propose values and say they are hard limits; the user confirms |
+| Reference images | optional, up to 8, to show what the scene should look like | PNG, JPEG or WebP files of at most 10 MiB each that the user names |
 
-Find the robot: a published `robot_description` sim asset version of the workspace in each target format. `sim-assets.list` with `query` `{"workspaceId": "wks_...", "kind": "robot_description"}`, then `sim-assets.list-versions` of each asset. When there is none, add one (Robot models, above).
+## Decisions
+
+**The plan** (step 3)
+
+| Option | Choose when | Consequence |
+| --- | --- | --- |
+| Approve as it is | the plan matches the prompt | the build steps start and use budget |
+| Edit, then approve | single values are wrong: a size, a count, a position, an item's source | the edited plan is what gets built |
+| Plan again with notes | the plan misses the intent | the build is cancelled, then the plan step reruns with the notes and uses budget; the new plan comes back for review |
+
+**Each output** (step 5)
+
+| Option | Choose when | Consequence |
+| --- | --- | --- |
+| Qualify at `interaction_eval` | geometry, mass, friction and scale were checked | gating evaluations and training launches stage only versions at this level |
+| Reject and rebuild | the output is wrong and the notes say how | the output is deprecated and its step reruns with the notes; uses budget |
+| Reject | the output is not needed | the output is deprecated; nothing reruns |
+
+**Budget exhausted**
+
+| Option | Choose when | Consequence |
+| --- | --- | --- |
+| Raise the budget and resume | the remaining steps are worth more model calls and compute hours | the build continues from its first unfinished step |
+| Stop | the cost outweighs the result | finished outputs stay; the build stays `budget_exhausted` |
+
+## Steps
+
+### 1. Start the build
+
+Find the robot: `sim-assets.list` with `query` `{"workspaceId": "wks_...", "kind": "robot_description"}`, then `sim-assets.list-versions` of each asset. Pick the published version in each target format.
 
 `sim-asset-builds.create` body:
 
@@ -113,53 +107,59 @@ Find the robot: a published `robot_description` sim asset version of the workspa
 }
 ```
 
-- `workspaceId` is the workspace's id (`workspaces.list` finds it by slug).
 - `robotAssetVersionIds` has exactly one key per target format.
-- `request.referenceImageHashes` is optional: up to 8 images, each first uploaded with `sim-asset-builds.reference-images` (`workspaceId`, the image's `sha256`, `size` in bytes, `contentType`) and its bytes sent with the `upload` grant it returns.
+- `request.referenceImageHashes` is optional: up to 8 images. Upload each first with `sim-asset-builds.reference-images` (`workspaceId`, the image's `sha256`, `size` in bytes, `contentType`) and send its bytes with the `upload` grant it returns; `upload` `null` means the image is already stored.
 - `builders` is optional: each builder the request omits is rFabric's platform builder image. Pass one only to try another builder image, pinned by digest (`repository@sha256:<64 hex>`).
 - Every budget counter is a hard limit checked before each step and each model call.
 
+Before the call, tell the user that the build spends model calls and compute up to the budget. Afterwards: the build id, the budget it runs under, and that the next thing they see is a plan to review; nothing is built before they approve it.
+
 ### 2. Wait for the plan
 
-Call `sim-asset-builds.get` every 15-30 seconds until `status` is `awaiting_plan_approval`. The build's `steps` are its current revision's steps: each step's `status`, `classification` and `error`, the `sources` it fetched and the `modelCalls` it made. A failed step's attempt logs are `compute-attempts.logs` with its `attemptId`.
-
-Statuses: `planning` -> `awaiting_plan_approval` -> `building` -> `awaiting_review`; or `failed`, `cancelled`, `budget_exhausted`.
+Call `sim-asset-builds.get` every 15 to 30 seconds until `status` is `awaiting_plan_approval`. The build's `steps` are its current revision's steps: each step's `status`, `classification` and `error`, the `sources` it fetched and the `modelCalls` it made. A failed step's attempt logs are `compute-attempts.logs` with its `attemptId`. A step is cut off after one hour.
 
 Each revision (`revisions[]`) runs as one Operation (`operationId`). A `failed` build's reason, such as `plan_invalid` for a plan the API refused, is that Operation's `error`: `operations.get`.
 
 ### 3. Review and approve the plan
 
-`sim-asset-builds.list-plan` returns `planSha256` and `plan` (`protocol: sim-asset-plan/1`). Check against the prompt:
+`sim-asset-builds.list-plan` returns `planSha256` and `plan` (`protocol: sim-asset-plan/1`). Show the user the plan against their prompt, as a short summary and one table of items:
 
 - `layout`: `extentM` (floor, metres), the `route` waypoints, `clearances`, and each `placements[]` entry (`position` in metres, `rotation` in degrees, z up).
-- `items[]`: `key`, `label`, `quantity`, `dimensions` (`assumed: true` means estimated), `source` (`generate`, or `library` with `repository`, `commit`, `path`).
+- `items[]`: `key`, `label`, `quantity`, `dimensions` (`assumed: true` means estimated: point these out), `source` (`generate`, or `library` with `repository`, `commit`, `path`).
 - `parameters[]`: the scene parameters scenarios and trainers will randomize.
 - `assumptions` and `sources`: what the planner guessed and what it read.
+- `conceptImage`: the SHA-256 of the concept image. `sim-asset-builds.contents` with that hash returns a `downloadUrl`; give the user the link so they can look at it.
 
-To change the plan, send the whole edited document as the body of `sim-asset-builds.replace-plan` (start from the `plan` you read, keep `robot.assetVersionId`, `conceptImage` and every `referenceCropHash` as they are; a `library` item's `commit` must be a commit SHA). It returns the stored plan with a new `planSha256`.
+| The user wants | Do |
+| --- | --- |
+| The plan as it is | approve (below) |
+| Single values changed | send the whole edited document as the body of `sim-asset-builds.replace-plan`: start from the `plan` you read, keep `robot.assetVersionId`, `conceptImage` and every `referenceCropHash` as they are; a `library` item's `commit` must be a commit SHA. It returns the stored plan with a new `planSha256`. Show the user what changed, then approve |
+| Another plan | a build that waits for approval counts as running, so first `sim-asset-builds.cancel`, then `sim-asset-builds.revisions` with body `{"fromStepKey": "plan", "notes": "..."}`; say first that it uses budget. Back to step 2 |
 
-Approve with `sim-asset-builds.plan-approve` and body `{"planSha256": "<hex>"}`, the `planSha256` you last read. `plan_changed` (409) means the plan changed since you read it: read it again. Approval moves the build to `building` with one `import:<key>` / `object:<key>` step per item, then one `assemble:<format>` step per target format.
+Tell the user the plan waits for them, and for how long: a revision ends 7 days after it started, and a build still waiting for approval then fails with `operation_timeout`.
+
+Approve with `sim-asset-builds.plan-approve` and body `{"planSha256": "<hex>"}`, the `planSha256` the user last saw. Say before the call that approval starts the build steps, which use budget. The build moves to `building` with one `import:<key>` (a library item fetched at a pinned commit) or `object:<key>` (a generated object) step per item, then one `assemble:<format>` step per target format.
 
 ### 4. Review the outputs
 
-Poll `sim-asset-builds.get` until `awaiting_review`, then call `sim-asset-builds.outputs`. Each output has `itemKey` (`scene` for an assembled scene), `asset`, `version` and `sources`.
+Poll `sim-asset-builds.get` until `awaiting_review`; report each step as it finishes. Then call `sim-asset-builds.outputs`. Each output has `itemKey` (`scene` for an assembled scene), `asset`, `version` and `sources`. Every output is a `draft` version.
 
 Validation and previews finish after the build reaches `awaiting_review`: a version with no `fail` check, no previews `error` and `qualification` `null` is still settling unless its latest validation failed. Read that with `operations.list` and `query` `{"kind": "simAsset.validate", "resourceType": "simAssetVersion", "resourceId": "<version-id>", "sort": "createdAt:desc"}`:
 
 - the newest Operation is `queued` or `running`, or `succeeded` with the previews still rendering: call `sim-asset-builds.outputs` again;
-- it `failed` (its `error` `code`, e.g. `no_capable_pool` or `asset_validation_incomplete`): stop waiting, and once the cause is fixed rerun validation with `sim-assets.versions-validate`, or rebuild the version (step 5).
+- it `failed` (its `error` `code`, for example `no_capable_pool` or `asset_validation_incomplete`): stop waiting, and once the cause is fixed rerun validation with `sim-assets.versions-validate`, or rebuild the version (step 5).
 
-Stop and report a version that has not settled after 15 minutes. For each version check:
+Stop and report a version that has not settled after 15 minutes. For each version check, and show the user as one table (output, validation, qualification, licence):
 
 - `validationResults.checks`: no `fail`; read every `warn`.
-- `previews.thumbnailUrl` and `previews.turntableUrl`: download them and look at them.
+- `previews.thumbnailUrl` and `previews.turntableUrl`: download them, look at them, and tell the user where the files are so they can look too.
 - `qualification`: `perception_eval` from validation; `interaction_eval` only after a review.
 - `dependencies`: a scene depends on the robot and the item versions of its format.
 - `license` and the step's `sources` for imported items.
 
 ### 5. Qualify, reject, or rebuild
 
-**Qualify** each version you reviewed with `sim-assets.versions-qualify`, the version id as `pathParameters` `id`:
+The user decides per output. **Qualify** each version they accept with `sim-assets.versions-qualify`, the version id as `pathParameters` `id`:
 
 ```json
 {
@@ -169,47 +169,74 @@ Stop and report a version that has not settled after 15 minutes. For each versio
 }
 ```
 
-- Confirm a checklist item only after checking it; all four must be true.
-- Qualify dependencies first: the robot and the item versions before the scene. `asset_qualification_insufficient` (422) with `details.requiredLevel` `interaction_eval` lists in `details.assetVersionIds` the versions to qualify first; with `perception_eval` it names the version itself, which is not at `perception_eval`: wait while its validation or previews are still settling (step 4), and rebuild it (below) after a `fail` check, `visual_preview` or a previews `error`.
-- A version imported or converted without licence metadata needs a `License: <license>` line in `notes`.
-- Needs the `simAsset.publish` permission. Gating evaluations and training launches stage only versions qualified at `interaction_eval`.
+- Confirm a checklist item only after checking it; all four must be true. Tell the user what you checked for each and what you could not check.
+- Qualify dependencies first: the robot and the item versions before the scene.
+- A version imported or converted without licence metadata needs a `License: <license>` line in `notes`: ask the user for the licence.
 
 Otherwise:
 
-- **Reject without rebuilding** with `sim-asset-builds.outputs-reject`: `pathParameters` `{"id": "smab_...", "versionId": "smav_..."}` and body `{"notes": "..."}` saying why. The version becomes `deprecated` with your notes; this requires `simAsset.publish`.
-- **Reject and rebuild** with the same operation and body `{"notes": "...", "rebuild": true}`. It atomically deprecates the output and starts revision N+1 from the step that registered it, using the rejection notes. It requires both `simAsset.publish` and `definition.author`; do not follow it with a separate `sim-asset-builds.revisions` call.
+- **Reject without rebuilding** with `sim-asset-builds.outputs-reject`: `pathParameters` `{"id": "smab_...", "versionId": "smav_..."}` and body `{"notes": "..."}` saying why. The version becomes `deprecated` with the notes; this cannot be undone.
+- **Reject and rebuild** with the same operation and body `{"notes": "...", "rebuild": true}`. It atomically deprecates the output and starts revision N+1 from the step that registered it, using the rejection notes. It needs both permissions; do not follow it with a separate `sim-asset-builds.revisions` call.
 - **Start a revision without rejecting an output** with `sim-asset-builds.revisions` and body `{"fromStepKey": "...", "notes": "..."}`: `fromStepKey` is the step to rerun (the version's `buildStepKey`: `object:<key>`, `import:<key>` or `assemble:<format>`, or `plan` to plan again). That step and every dependent step rerun as a new revision; every other step is reused. Then go back to step 2 (from `plan`) or 4.
 
-## Errors
+A rebuild uses budget: say so before the call. Only a `draft` output can be rejected.
 
-| Code | Status | Do |
+Done when: `sim-asset-builds.get` shows `completed`. The build reaches it by itself once every output of the current revision is qualified at `interaction_eval` or rejected.
+
+### 6. Publish the accepted outputs
+
+A qualified output is still a `draft`: a scenario can pin it, and a training launch can stage it, only once it is `published`.
+
+Before the call, tell the user: a published version is immutable and can no longer be rejected; retiring it later is a deprecation (`simulator-setup`).
+
+`sim-assets.versions-publish` with each accepted version id, dependencies first: the item versions, then the scene.
+
+Done when: `sim-asset-builds.outputs` shows every accepted version `published`.
+
+## Problems
+
+| Signal | What it means | Do |
 | --- | --- | --- |
-| `no_capable_pool` | 422 | no compute pool on the workspace's compute target (`compute.defaultTargetId` setting) runs `simAssetBuild.step` at `details.resourceClass`: ask a workspace admin for a target with such a pool |
-| `sim_asset_build_builders_unresolved` | 422 | rFabric has no platform builder image for the `keys` in `details`: pass `builders` for those keys, or ask a platform operator to release the sim asset builders |
-| `sim_asset_build_models_unavailable` | 422 | at create, the workspace can run no allowed model for the `roles` in `details`: with `clouds` in `details` (e.g. `openai`), ask an organization admin to connect that vendor's models API key under Integrations; with none, the workspace's `simAssetBuild.models` setting allows no model for those roles |
-| `sim_asset_build_robot_invalid` | 422 | the robot version is not a published `robot_description` of the workspace in that format |
-| `sim_asset_build_not_awaiting_plan_approval` | 409 | the build is not waiting for plan approval: read its status |
-| `plan_changed` | 409 | read the plan again and approve its `planSha256` |
-| `library_commit_invalid` | 422 | pin the library item's `commit` to a commit SHA (the `commit` in `details` holds the value refused) |
-| `build_revision_running` | 409 | the current revision is still running: wait until the build settles |
-| `budget_exhausted` | 409 | raise the budget with `sim-asset-builds.update` and body `{"budget": {...}}`, every counter, none below usage, then `sim-asset-builds.resume` |
-| `asset_qualification_insufficient` | 422 | `details.requiredLevel` `interaction_eval`: qualify `details.assetVersionIds` first; `perception_eval`: the version is not at `perception_eval` - wait while its validation or previews settle, rebuild it from its `buildStepKey` after a `fail` check, `visual_preview` or a previews `error` |
-| `VALIDATION_ERROR` | 422 | fix the argument named in `details` |
+| `no_capable_pool` (422) | no compute pool on the workspace's compute target (`compute.defaultTargetId` setting) runs `simAssetBuild.step` at `details.resourceClass` | a workspace admin adds a target with such a pool: `compute-setup` |
+| `sim_asset_build_builders_unresolved` (422) | the build names no builder for the `keys` in `details` and rFabric has none for them | pass `builders` for those keys; a platform builder is rFabric's to grant: ask your rFabric contact |
+| `sim_asset_build_models_unavailable` (422) | at create, the workspace can run no allowed model for the `roles` in `details` | with `clouds` in `details` (for example `openai`): an organization admin connects that model vendor account, `model-vendor-credential`; with none: the workspace's `simAssetBuild.models` setting allows no model for those roles |
+| `sim_asset_build_robot_invalid` (422) | the robot version is not a published `robot_description` of the workspace in that format | pick another version, or add the model: [robot-models.md](robot-models.md) |
+| `sim_asset_build_reference_image_missing` (422) | a hash in `referenceImageHashes` was not uploaded to the workspace (`sha256` in `details`) | upload it with `sim-asset-builds.reference-images`, then create again |
+| `CONFLICT` (409) at create | the `slug` is taken by another build of the workspace | choose another slug |
+| `sim_asset_build_not_awaiting_plan_approval` (409) | the build is not waiting for plan approval | read its status |
+| `plan_changed` (409) | the plan changed since it was read | read the plan again, show the user the difference, approve its `planSha256` |
+| `library_commit_invalid` (422) | a library item's `commit` is not a commit SHA (the `commit` in `details` holds the value refused) | pin it to a commit SHA |
+| `build_revision_running` (409) | the current revision is still running; a build that waits for plan approval counts as running | wait until the build settles; to plan again while it waits for approval, cancel it first (step 3) |
+| Status `failed` | a step of the current revision failed, or the revision passed its 7 days (`operation_timeout`) | read the Operation's `error`, the failed step's `error` and its attempt logs (step 2); once the cause is fixed, rerun from that step with `sim-asset-builds.revisions` and its `stepKey` as `fromStepKey` (`plan` after a timeout while waiting for approval) |
+| `budget_exhausted` (409), or status `budget_exhausted` | a budget counter reached its limit | show `usage` against `budget`; on the user's decision raise it with `sim-asset-builds.update` and body `{"budget": {...}}` (every counter, none below usage), then `sim-asset-builds.resume` |
+| `sim_asset_build_not_budget_exhausted` (409) on resume | only a `budget_exhausted` build resumes | read its status; rerun a failed or cancelled build from a step with `sim-asset-builds.revisions` |
+| `sim_asset_build_not_cancellable` (409) | the build is already `completed`, `failed` or `cancelled` | nothing to cancel |
+| `asset_qualification_insufficient` (422) | `details.requiredLevel` `interaction_eval`: dependencies are not qualified; `perception_eval`: the version itself is not at `perception_eval` | qualify `details.assetVersionIds` first; or wait while validation or previews settle (step 4), and rebuild the version from its `buildStepKey` after a `fail` check, `visual_preview` or a previews `error` |
+| `CONFLICT` (409) on reject | the output is no longer a `draft` | a published version is retired by deprecation: `simulator-setup` |
+| `asset_dependency_unpublished` (422) on publish | a dependency is still a `draft`, or was rejected (ids in `details`) | publish the dependencies first; a scene that depends on a rejected item needs a rebuild from its `assemble:<format>` step |
+| `VALIDATION_ERROR` (422) | an argument is malformed | fix the argument named in `details` |
 
-## Definition of Done
+## Done when
 
-- [ ] The plan you approved is the build's current plan: its `planSha256` is the one `sim-asset-builds.plan-approve` named, and it matches the prompt or your edits.
-- [ ] The build is `awaiting_review` and every step of its current revision succeeded.
-- [ ] Every output in `sim-asset-builds.outputs` has no `fail` validation check, and you looked at its previews.
-- [ ] Every output you accepted is qualified at `interaction_eval`, its dependencies before it, with notes on what you checked; every output you did not accept was rejected through `sim-asset-builds.outputs-reject` or rebuilt through `sim-asset-builds.revisions`, with notes.
-- [ ] You reported the build id and each output's version id and qualification.
+- [ ] The plan the user approved is the build's current plan: its `planSha256` is the one `sim-asset-builds.plan-approve` named.
+- [ ] `sim-asset-builds.get` shows `completed`, and every step of its current revision succeeded.
+- [ ] Every output in `sim-asset-builds.outputs` has no `fail` validation check, and its previews were looked at.
+- [ ] Every accepted output is qualified at `interaction_eval`, its dependencies before it, with notes on what was checked, and is `published`; every other output was rejected through `sim-asset-builds.outputs-reject` or rebuilt, with notes.
+- [ ] The final report lists the build id, each output's version id, qualification and status, and usage against the budget.
 
-## With a shell: the rfabric CLI
+## Next
 
-An agent with a shell can run the same steps with the `rfabric` CLI, signed in and with its workspace set (`rfabric config set workspace <workspace-id-or-slug>`); add `--output json` to read what the API returned. The rFabric agent has no shell and uses the MCP tools only.
+- `simulator-setup`: make the simulator that loads these assets runnable in the workspace.
+- `simulation-suite`: define scenarios on the scene and run a policy against them.
+- `training-run`: stage the scene and the robot in a reinforcement learning launch.
+
+## The rfabric CLI
+
+They need a signed-in CLI with the workspace set (`rfabric config set workspace <workspace-id-or-slug>`); `--output json` prints what the API returned.
 
 | Step | CLI |
 | --- | --- |
+| Find the robot | `rfabric sim-asset ls --filter kind=robot_description`, then `rfabric sim-asset versions <asset-id>` |
 | Start a build, with reference images | `rfabric sim-asset-build create ... [--reference-image <file>]` |
 | Follow it | `rfabric sim-asset-build get <build-id>` |
 | List builds | `rfabric sim-asset-build ls [--status <status>]` |
@@ -220,18 +247,10 @@ An agent with a shell can run the same steps with the `rfabric` CLI, signed in a
 | Reject an output, or reject and rebuild | `rfabric api post /api/sim-asset-builds/<build-id>/outputs/<version-id>/reject --data '{"notes":"...","rebuild":true}'`; omit `rebuild` for rejection only |
 | Rebuild from a step | `rfabric sim-asset-build revise <build-id> --from <step-key> --notes "..."` |
 | Qualify a version | `rfabric sim-asset qualify <version-id> --level interaction_eval --checklist ...` |
+| Publish a version | `rfabric sim-asset publish <version-id>` |
 | Raise the budget | `rfabric api patch /api/sim-asset-builds/<build-id> --data '{"budget":{...}}'` |
 | Continue after budget exhaustion | `rfabric sim-asset-build resume <build-id>` |
 | Cancel | `rfabric sim-asset-build cancel <build-id>` |
-| Find the robot | `rfabric sim-asset ls --filter kind=robot_description`, then `rfabric sim-asset versions <asset-id>` |
-| Browse the asset catalog | `rfabric sim-asset catalog ls [--search go2] [--maker <maker>] [--robot-type <type>] [--format mjcf]` |
-| Import a catalog entry | `rfabric sim-asset catalog import <key> [--format <f>]... [--robot <id>] --wait` |
-| Resolve a repository URL | `rfabric sim-asset resolve <url> [--revision <revision>]` |
-| Import from a repository | `rfabric sim-asset import <url> [--revision <revision>] [--path <path>] (--asset <asset-id> \| --name <n> --slug <s>) --wait`; it resolves for you, `--path` is needed when the URL names no file |
-| Upload local files | `rfabric sim-asset create-version <asset-id> --format <f> [--root-path <path>]`, then `rfabric sim-asset upload <version-id> <file>` |
-| Convert to MJCF or OpenUSD | `rfabric sim-asset convert <version-id> --format mjcf\|openusd --wait` |
-| Check its source for an update | `rfabric sim-asset source-update <version-id>`; it prints the `rfabric sim-asset import` command of the update |
-| Publish a version | `rfabric sim-asset publish <version-id>` |
 | Rerun validation | `rfabric sim-asset validate <version-id> --wait` |
 | Find a version's validation | `rfabric operation ls -f kind=simAsset.validate -f resourceType=simAssetVersion -f resourceId=<version-id> --sort createdAt:desc` |
 | Read an Operation | `rfabric operation get <operation-id>` |
