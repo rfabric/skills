@@ -1,0 +1,13 @@
+{
+  "name": "rfabric",
+  "displayName": "rFabric",
+  "version": "0.1.0",
+  "description": "rFabric agent skills and the rfabric MCP server: run rFabric workflows, such as sim asset builds, from Claude Code as your rFabric user.",
+  "author": {
+    "name": "rFabric",
+    "url": "https://rfabric.io"
+  },
+  "homepage": "https://rfabric.io",
+  "repository": "https://github.com/rfabric/skills",
+  "keywords": ["rfabric", "robotics", "simulation", "mcp"]
+}
