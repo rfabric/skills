@@ -41,7 +41,8 @@ An imported version is a draft that records its `source` (`library`, `repository
 2. `sim-assets.create-versions` for a draft version with its `format` and, for an archive, `rootPath`, the root document inside it.
 3. `sim-assets.versions-upload` with the file's `sizeBytes` and `sha256`: it returns the upload session (`sessionId`, `status`, `parts` with presigned URLs). `status` `completed` means the content is already stored: send nothing.
 4. `sim-assets.versions-upload-sessions` gives `partSizeBytes`, `partCount` and the `acknowledgedParts`. Upload part n (from byte (n-1) x `partSizeBytes`, `partSizeBytes` long, the last part shorter) to its URL and keep its `etag`. Sign the part URLs you lack with `sim-assets.versions-upload-sessions-parts` (`fromPartNumber`, `toPartNumber`).
-5. `sim-assets.versions-upload-sessions-complete` with every `{"partNumber", "etag"}`.
+5. `sim-assets.versions-upload-sessions-parts-acknowledge` with the `{"partNumber", "etag"}` of each part you sent; a part not acknowledged fails completion with `part_not_acknowledged`.
+6. `sim-assets.versions-upload-sessions-complete` with every `{"partNumber", "etag"}`.
 
 A version accepts content once: create another version to upload other bytes.
 

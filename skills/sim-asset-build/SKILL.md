@@ -1,7 +1,7 @@
 ---
 name: sim-asset-build
 description: >-
-  Simulation assets for a robot, built by rFabric from a prompt - objects and an assembled OpenUSD or MJCF scene, validated, qualified for evaluation and published. Use when asked to build, generate or plan a simulation environment, scene, course or objects for a robot, to review or edit a build's plan, to review, reject, rebuild, qualify or publish its outputs, or to continue a build that failed or ran out of budget. Also adds the robot model a build needs. Not for registering existing scenes or a simulator: `simulator-setup`.
+  Simulation assets for a robot - objects and an assembled OpenUSD or MJCF scene, built by rFabric from a prompt or authored locally by the agent, validated, qualified for evaluation and published. Use when asked to build, generate, author, write or plan a simulation environment, scene, course or objects for a robot, to review or edit a build's plan, to review, reject, rebuild, qualify or publish its outputs, or to continue a build that failed or ran out of budget. Also adds the robot model a build needs. Not for registering a simulator or scenes that already exist as files: `simulator-setup`.
 ---
 
 # Sim asset build
@@ -11,6 +11,17 @@ A **sim asset build** (SimAssetBuild, `smab_...`) turns a prompt, one published 
 The user reviews twice: the **plan** before anything is built, and the **outputs** before they are qualified for evaluation and published.
 
 Apply `rfabric-basics` throughout: it defines what to tell the user at each moment and how to call rFabric.
+
+## Build on rFabric or author locally
+
+Two paths lead to the same published, qualified sim asset versions. Offer both before step 1 and let the user choose:
+
+| Path | Choose when | Consequence |
+| --- | --- | --- |
+| **Author locally** ([author-locally.md](author-locally.md)) | the user wants the assets quickly; the scene is a few objects you can write directly (boxes, ramps, platforms, a mat, a table) | you write the MJCF or OpenUSD files on the user's machine, check they load, and upload them; no build budget and no rFabric compute before the upload. No build record: no prompt, plan or model-call history; dependencies are still pinned |
+| **Build on rFabric** (the steps below) | the user wants generated objects from a prompt or reference images, library items imported at a pinned commit, a plan to review first, or the build's full record from prompt to outputs | the build runs digest-pinned builder images on rFabric compute and spends its budget; it takes longer |
+
+Without a shell (`bash`) you can still author locally: write the files with your file tools; only the local load check (step 3 of [author-locally.md](author-locally.md)) needs the shell.
 
 ## At a glance
 
