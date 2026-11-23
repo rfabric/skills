@@ -26,7 +26,7 @@ Ask what the build's prompt would hold: the robot, the target format (`mjcf` for
 Mirror the layout every rFabric task stages, so the paths you write load the same way locally and on rFabric: a working directory `sim-assets/` with one directory per version, `sim-assets/<smavId>/`.
 
 - Find the robot as in step 1 of `SKILL.md`: a published `robot_description` version in the target format.
-- For each version the scene uses (the robot, objects already in the workspace), `sim-assets.versions-fetch-url` returns a `url` and its `contentHash`. Download it with `rfabric_download` into `sim-assets/<smavId>/`; check the `sha256` against `contentHash`. An archive (`rootPath` set on the version) is extracted there; a single file is named `content.<ext>` (`content.xml` for `mjcf`, `content.usd` for `openusd`).
+- For each version the scene uses (the robot, objects already in the workspace), `sim-assets.versions-fetch-url` returns a `url` and its `contentHash`. Download it with `rfabric_download` into `sim-assets/<smavId>/`; check the `sha256` against `contentHash`. An archive (`rootPath` set on the version) is extracted there; a single file is named `content.<ext>`, with `<ext>` `xml` for `mjcf` and `usd` for `openusd`.
 - A version's root document is `sim-assets/<smavId>/<rootPath>` for an archive and `sim-assets/<smavId>/content.<ext>` for a single file.
 
 ### 3. Write the files and check that they load
