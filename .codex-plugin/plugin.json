@@ -1,6 +1,6 @@
 {
   "name": "rfabric",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "rFabric agent skills and the rfabric MCP server: run rFabric workflows, from connecting storage and enrolling robots to training, evaluation and rollout, from Codex as your rFabric user.",
   "author": {
     "name": "rFabric",

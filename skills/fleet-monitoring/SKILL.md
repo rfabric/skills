@@ -169,7 +169,7 @@ A change shortly before the failure (a deployment activation, a configuration ed
 | Recordings | `episodes.list` | `robotId`, `capturedAtFrom`, `capturedAtTo`; add `hasIntervention` for the ones a human corrected |
 | Human takeovers | `intervention-sessions.list` | `workspaceId`, `robotId`; keep the ones whose `requestedAt` falls in the window |
 | Their outcomes | `intervention-events.list` | `robotId` or `deploymentId`; `outcome` is `success`, `partial`, `failure`, `terminate` or `rerecord` |
-| Evaluations on the robot | `evaluation-runs.list` | `workspaceId`, `executionMode` `real_robot`; keep the runs with this `robotId` whose `startedAt` is in the window |
+| Evaluations on the robot | `evaluation-runs.list` | `workspaceId`, `dimension` `{"robot_id": "<robot id>"}`, `sort` `startedAt:desc`; keep the runs whose `startedAt` is in the window |
 | The chain behind the version | `lineage.get` | path `id` the deployment id, `direction` `up`, `mode` `summary` first |
 
 - `lineage.get` walks from the Deployment up to the Artifact, Model, TrainingRun, DatasetVersion and Episodes behind it. `mode` `summary` gives counts per type; `graph` gives the nodes, up to `depth` 10. A deeper graph is refused with `lineage_too_large` (422): start a query job with `lineage.create-queries` (`rootId`, `workspaceId`, `direction`, `depth`) and poll `lineage.get-queries` until `status` is `completed` or `failed`.

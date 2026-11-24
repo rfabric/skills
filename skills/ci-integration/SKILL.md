@@ -190,7 +190,7 @@ Your turn 3 in the CI system's file. Do it only after one pipeline has passed on
 ## Scheduled runs
 
 - **Simulation suites**: use the CI system's scheduler (its file has the snippet). Each scheduled pipeline launches a new job.
-- **Other protocols** (real robot, replay): an EvaluationSchedule (`evsc_...`) in rFabric. `evaluation-schedules.create` with `workspaceId`, `name`, `protocolId`, `subjectType`, `subjectId` and `intervalS` (at least 60); `evaluation-schedules.list` shows `nextRunAt` and `lastJobId`; `evaluation-schedules.update` with `enabled` false pauses it; `evaluation-schedules.delete` removes it. A simulation protocol is refused with `simulation_requires_suite` (422).
+- **Other protocols** (real robot, replay): an EvaluationSchedule (`evsc_...`) in rFabric. `evaluation-schedules.create` with `workspaceId`, `name`, `protocolId`, `subjectType`, `subjectId` and `intervalS` (at least 60); `evaluation-schedules.list` shows `nextRunAt` and `lastJobId`; `evaluation-jobs.list` with `scheduleId` lists every job it launched; `evaluation-schedules.update` with `enabled` false pauses it; `evaluation-schedules.delete` removes it. A simulation protocol is refused with `simulation_requires_suite` (422).
 
 ## Release gate with a baseline
 

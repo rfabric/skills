@@ -65,9 +65,9 @@ Why: each rollout is recorded and graded under the name of the person who ran an
 Who: a member who may launch evaluation jobs (owner, admin, operator or member).
 
 1. Open the next run: https://app.rfabric.io/open/<run id>
-2. Do the steps under "Physical setup" and confirm them.
+2. Do the steps under "Set up", then choose "Confirm setup".
 3. Run the policy once on the robot, and watch it.
-4. Fill in "Record execution" and save. For a human-graded protocol, grade the run right after.
+4. Fill in "Record execution" and choose "Record execution". For a human-graded protocol, grade this run right after: open https://app.rfabric.io/<organization slug>/<workspace slug>/evaluations/review/<run id>, answer, choose "Submit and next", then stop: the run it opens next is not one you watched.
 
 Bring back: tell me when the runs are recorded.
 Then I: check that no run awaits execution, and read the report.
@@ -78,7 +78,7 @@ Then I: check that no run awaits execution, and read the report.
 ### 1. List the runs that wait at the robot
 
 - `evaluation-runs.list` with `query` `{"jobId": "evj_...", "status": "awaiting_execution", "sort": "createdAt:asc"}`, or `workspaceId` in place of `jobId` for every job. Read all pages; work in `seq` order.
-- Per run read `seq`, `setupInstructions` (the steps before the rollout) and `environmentInstance`: its `sampledVariables` are the condition drawn for this run, `tier` its difficulty tier.
+- Per run read `seq`, `setupInstructions` (the steps before the rollout) and `environmentInstance`: its `sampledVariables` and `axes` are the condition drawn for this run, `tier` its difficulty tier.
 - From `evaluation-jobs.get`: the subject to run (`subjectType`, `subjectId`, `subjectVersion`). From `evaluation-protocols.get` with the job's `protocolId`: `gradingMode`, `rolloutPlan` (`timeoutS`), `metricRefs`, `criteriaId`.
 - What the person must bring back depends on `gradingMode`:
 
@@ -112,7 +112,7 @@ Bring back: "set up", and anything you had to do differently.
 Then I: record your setup confirmation under your name, with the time. It cannot be changed afterwards.
 ```
 
-The numbered lines are the `text` of the run's `setupInstructions`, in order, followed by the safety check; the condition line is its `sampledVariables`. A run without setup instructions needs only the condition and the safety check, and no confirmation call.
+The numbered lines are the `text` of the run's `setupInstructions`, in order, followed by the safety check; the condition line is its `sampledVariables` and `axes`. A run without setup instructions needs only the condition and the safety check, and no confirmation call.
 
 Then `evaluation-runs.setup-confirmation` with body `{"notes": "..."}` (what differed, or empty). A run with setup instructions refuses an execution record until this is done. The first confirmation is the one kept. Done when `evaluation-runs.get` shows `setupConfirmation` with `confirmedBy` and `confirmedAt`.
 
@@ -162,7 +162,7 @@ Then I: read the record back to you and save it once you confirm. It cannot be c
 - `state` is an object with the facts from step 1, for example `{"object_placed": false}`. A `scripted` protocol refuses `success` or `failure` without it. With the author permission you can check what the criteria conclude from it first: `evaluation-expressions.test` (`evaluation-definitions`).
 - `measurements`: `scopeType` is the metric's `scope`; `normalized` is the value as a number (1 or 0 for yes or no), else `null`. A `scripted` protocol refuses them: report `state` instead.
 - `notes` is free text kept on the run: what was unusual, and where the person's own recording of the rollout is, if they made one.
-- The run moves on at once: `completed` or `failed` (scored), `aborted` or `timeout`, or `awaiting_review`. Report which.
+- The run moves on at once: `completed` or `failed` (scored), `aborted` or `timeout`, or `awaiting_review`. Report which, with its `outcome`; for a scored run add what rFabric measured (`evaluation-runs.metric-results`) and the failures it found (`evaluation-runs.failures`).
 
 **Grade it now, with the person who watched.** A by-hand run that turned `awaiting_review` has no recording in rFabric to judge from: only someone who watched the rollout can grade it. With the user who watched, right after the record: `evaluation-runs.claim`, read the verdict back, `evaluation-runs.grade` (body as in step 8, from the answers of step 3). When `requiredVerdicts` of the run is above 1, that many people must have watched; each grades signed in as themselves.
 
@@ -295,6 +295,6 @@ Setup confirmation, the execution record and "not executed" have no dedicated co
 | --- | --- |
 | Review queue | `rfabric eval queue [--protocol <protocol-id>] [--scenario <scenario-id>]` |
 | Claim, release | `rfabric eval claim <run-id>`, `rfabric eval release <run-id>` |
-| Evidence | `rfabric evaluation-run evidence <run-id>`, `rfabric evaluation-run evidence-download <run-id> <evidence-id> <file>` |
+| Evidence, measurements, failures | `rfabric evaluation-run evidence <run-id>`, `rfabric evaluation-run evidence-download <run-id> <evidence-id> <file>`, `rfabric evaluation-run metric-results <run-id>`, `rfabric evaluation-run failures <run-id>` |
 | Verdict | `rfabric eval grade <run-id> [--success] [--safe] [--last-completed-stage <stageKey or none>] [--confidence <0-1>] [--notes <text>] [--failure <category>:<severity>:<description>]` |
 | Grading summary | `rfabric eval grading-summary <job-id>` |
