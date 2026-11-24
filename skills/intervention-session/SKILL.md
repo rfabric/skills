@@ -176,7 +176,7 @@ Why: you drive. I cannot send motion or see the video; I follow the session and 
    nobody else can drive it, and once it joins it can move under your control. Have someone at the robot
    with the emergency stop. (The button reads "Open console" when you already hold a session on this robot.)
 2. Wait for the video. The console checks that the robot stops on command; when the workspace requires it, you cannot move before it passes.
-3. Hold Space to drive, release to stop. Esc is the emergency stop: motion then stays off until you re-arm it.
+3. When the workspace requires a deadman (`teleop.deadmanRequired`, on by default), hold Space to drive and release to stop; otherwise the keys and gamepad drive directly. Esc is the emergency stop: motion then stays off until you re-arm it.
    The keyboard icon lists the keys this robot accepts; a connected gamepad works too.
 4. When you are finished choose "End session" and pick how it went: Success, Partial, Failed or Re-record.
 
