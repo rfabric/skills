@@ -217,7 +217,7 @@ Before the call, state the cost from the preflight plan: runs, estimated worker 
 
 `sim-suites.launch` with the same body, plus an `idempotencyKey` (8 to 200 characters, your own value). Repeating the identical launch with the same key returns the same job; a different launch with that key answers `idempotency_conflict`.
 
-It returns the EvaluationJob: `id`, `status`, `requestedRuns`, `baselineRuns`, `estimatedWorkerHours`, `operationId`, and `embodimentDifferences` again. Give the user `https://app.rfabric.io/open/<job id>`: the app shows live video of running cases.
+It returns the EvaluationJob: `id`, `status`, `requestedRuns`, `baselineRuns`, `estimatedWorkerHours`, `operationId`, and `embodimentDifferences` again. Give the user `https://app.rfabric.io/open/<job id>`: the evaluation's page follows the job live, and a running run there plays its live video.
 
 Done when: you hold the job id.
 
@@ -226,7 +226,7 @@ Done when: you hold the job id.
 - `evaluation-jobs.progress`: `status`, `runsByStatus` (`pending`, `running`, `completed`, `failed`, `aborted`, `timeout`, ...), `primaryMetricEstimate` with its confidence interval while runs come in, and `projectedCompletionAt`.
 - Report when the counts change, not on every poll. Give the projected completion when you start waiting.
 - An infrastructure failure of a run is retried automatically, up to the protocol's `maxInfraRetries`. Product failures, timeouts and cancellations are not.
-- A run that keeps failing: `evaluation-runs.list` with `{"jobId": "evj_..."}`, `evaluation-runs.attempts` for its attempts and their `error`, `compute-attempts.logs` for the simulator and candidate logs.
+- Runs that ended without success: `evaluation-runs.list` with `{"jobId": "evj_...", "outcome": {"in": ["failure", "timeout", "aborted", "system_error", "invalid"]}}`. Per run, `evaluation-runs.failures` says why it failed, `evaluation-runs.attempts` lists its attempts and their `error`, `compute-attempts.logs` gives the simulator and candidate logs.
 - `evaluation-jobs.get`: once `status` is `completed`, `failed` or `cancelled`, `reportId` is set. Hand over to `evaluation-job` at its step "Read the verdict"; do not summarize the result from progress numbers.
 - **Cancel**: `evaluation-jobs.cancel`. Tell the user first: running cases stop, unstarted ones never run, and the report of a cancelled job always concludes `inconclusive`. A job already `completed` or `failed` answers 409.
 

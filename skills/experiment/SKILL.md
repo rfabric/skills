@@ -108,7 +108,7 @@ The conclusion belongs to the user. Show the comparison, propose the winner and 
   "outcomeSummary": "Chunk size 20 lowered final validation loss from 0.041 to 0.033 on the same data.",
   "decision": "Adopt chunk size 20 as the template default; promote the checkpoint of the winning run.",
   "winningRunId": "run_...",
-  "links": [{ "label": "Evaluation report", "url": "https://app.rfabric.io/open/evrp_..." }]
+  "links": [{ "label": "Evaluation report", "url": "https://app.rfabric.io/open/evj_..." }]
 }
 ```
 

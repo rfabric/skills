@@ -27,7 +27,7 @@ Apply `rfabric-basics` throughout: it defines what to tell the user at each mome
 | 3 | Launch | agent | `evaluation-jobs.create` | none |
 | 4 | Follow the runs | agent; a person at the robot for by-hand runs; graders for human-graded runs | `evaluation-jobs.progress`, `evaluation-runs.list` | until the job is terminal: for replay at most runs x the protocol's `timeoutS`; for by-hand and human-graded runs, the time people take |
 | 5 | Read the verdict | agent | `evaluation-jobs.get`, `evaluation-jobs.report` | none |
-| 6 | Diagnose failures | agent | `evaluation-jobs.failure-breakdown`, `evaluation-jobs.failure-clusters`, `evaluation-jobs.diagnostics`, `evaluation-jobs.operations` | none |
+| 6 | Diagnose failures | agent | `evaluation-jobs.failure-breakdown`, `evaluation-jobs.failure-clusters`, `evaluation-jobs.diagnostics`, `evaluation-jobs.operations`, `evaluation-runs.list`, `evaluation-runs.metric-results`, `evaluation-runs.failures` | none |
 | 7 | Export and re-score | agent | `evaluation-jobs.report-export`, `evaluation-reports.junit`, `evaluation-reports.reevaluate` | none |
 | 8 | Compare | agent | `evaluation-comparisons.create` | none |
 | 9 | Reproduce a run | agent | `evaluation-jobs.reproduce` | a one-run job |
@@ -103,7 +103,7 @@ Then state the plan: runs, where, the time bound in hours (replay), and who must
 - `executionMode` takes one value, `manual`. Send it for a `real_robot` protocol; leave it out for a `replay` or `manual` protocol.
 - `requestedRuns` must lie within the protocol's `minRuns` and `maxRuns`.
 - `baselineRuns` (with `baselineKind` `teleop_baseline` or `human_baseline`) adds runs a person performs as the reference. Only a human-graded protocol accepts them; the report keeps them apart from the subject's runs.
-- `seed` fixes the scenario assignment. Give two jobs the same `seed` and run count to compare them as pairs (step 8).
+- `seed` fixes the scenario assignment. For a protocol with a scenario, two jobs with the same `seed` and run count run the same cases and compare as pairs (step 8). Runs of a protocol without a scenario have no case and never pair.
 - `idempotencyKey` (8 to 200 characters): the same key with the same request returns the same job instead of launching twice.
 
 Before the call say what starts: runs that wait for a person at the robot, or compute that is billed. The job comes back `queued` with its runs created; give the user its `appUrl`.
@@ -126,10 +126,12 @@ Poll `evaluation-jobs.progress` (every 30 seconds is enough) and report changes:
 | `aborted`, `timeout` | ended without a result |
 | `skipped` | not needed (the stopping rule had enough evidence) or marked not executed |
 
+- A run's result is its `outcome`, not its `status`: `success` or `failure`, `timeout`, `aborted`, `system_error` or `invalid` (it broke for infrastructure reasons), `skipped` (not needed, or not executed); `null` until the run has a result.
 - Job `status`: `queued` -> `running` -> `completed`, `failed` or `cancelled`.
 - A protocol with `stoppingRule` `confidence` or `sequential` can finish before all runs execute. Say so when it happens: it is not a failure.
 - A job that waits on people has no time limit. After 15 minutes without a change, stop polling, say who it waits for (`runsByStatus`), and that `evaluation-jobs.get` picks it up later.
 - One run: `evaluation-runs.list` with `jobId`, then `evaluation-runs.get`. Its timeline: `evaluation-runs.events` (page with `offset`), or live with `evaluation-runs.timeline-stream`. Its files: `evaluation-runs.evidence`, and `evaluation-runs.evidence-download-url` for a download URL valid until its `expiresAt`. Compute attempts of a replay run: `evaluation-runs.attempts`, logs with `compute-attempts.logs`.
+- Let the list select runs; never filter pages in your own code. `query` keys beside `jobId`: `outcome` and `failureCategory` (one value, or `{"in": [...]}` for several), `stoppedAtStage`, `safetyPass`, `dimension` (step 6), `replaced` `false` (one run per slot: leaves out runs a retry replaced), `sort` `durationS:desc`. The unsuccessful runs: `{"jobId": "evj_...", "outcome": {"in": ["failure", "timeout", "aborted"]}, "replaced": false}`.
 
 ### 5. Read the verdict
 
@@ -146,7 +148,7 @@ When the job is terminal its `reportId` is set. `evaluation-jobs.report` returns
 | `baselinePrimaryResult`, `baselineRunCounts` | the human baseline runs, reported apart |
 
 - `inconclusive` means the evidence does not decide: a gate's interval straddles its threshold, or the job was cancelled (`RUN_CANCELLED`). It is treated as not passed everywhere. The fix is more runs, not a retry of the same count.
-- Runs that broke for infrastructure reasons (`terminalState` `system_error` or `invalid`) are left out of every number.
+- Runs that broke for infrastructure reasons (`outcome` `system_error` or `invalid`) are left out of every number. The runs a report version counted: `evaluation-runs.list` with its `reportId`.
 - Under a `restricted` protocol a reader without `evaluationDefinition:publish` gets only the conclusion fields.
 - Under a protocol whose `reviewPolicy` is `blind`, job and run reads can return the subject fields as `null`. Keep the job id and the subject from the launch, and find jobs and runs by `protocolId` or `jobId`, not by `subjectType` or `subjectId`.
 
@@ -161,14 +163,17 @@ Say what a pass changed, because it happens without another call:
 | Question | Operation |
 | --- | --- |
 | Which kinds of failure, which safety violations? | `evaluation-jobs.failure-breakdown` |
-| Under which conditions do failures concentrate? (also while running) | `evaluation-jobs.failure-clusters`: failure `category` by scenario `axisRegion`, with the failing run ids |
+| Under which conditions do failures concentrate? (also while running) | `evaluation-jobs.failure-clusters`: per failure `category` and run `condition` (its sampled scenario variables and randomization axis values, key to value), the `failureCount` and the `runIds`. A cluster's runs: `evaluation-runs.list` with `jobId`, `failureCategory` its `category` and `dimension` its `condition` |
 | Success by scenario condition? | `evaluation-jobs.scenario-slices` |
 | What did rFabric notice by itself? | `evaluation-jobs.diagnostics`: notes with `severity`, `message` and the runs behind them |
-| Where in a staged task do runs drop out? | `evaluation-jobs.stage-success` |
+| Where in a staged task do runs drop out? | `evaluation-jobs.stage-success`; the runs that stopped at a stage: `evaluation-runs.list` with `jobId` and `stoppedAtStage` the stage key. Each run reads the stage it stopped at as `stoppedAtStage` (`null` when it completed every stage or is outside the funnel) |
 | How is a metric distributed? | `evaluation-jobs.violin-data`; keep a chart definition with `evaluation-report-views.create` |
 | Was it the model or the infrastructure? | `evaluation-jobs.operations`: `retries`, `systemErrors`, `stuckClosures`, `workerReclaims` |
-| What happened in this run? | `evaluation-runs.get` (`terminalState`, `runScore`, `stageResults`), its events and evidence, `evaluation-runs.manifest` (`complete`, `missingFields`), `evaluation-runs.verdicts` |
+| Which runs to look at? | `evaluation-runs.list` with `jobId` and the filters of step 4: `safetyPass` `false` for the unsafe runs, `outcome` `timeout` for the runs that ran out of time |
+| What happened in this run? | `evaluation-runs.get` (`outcome`, `stoppedAtStage`, `runScore`, `stageResults`); what was measured: `evaluation-runs.metric-results` (per metric `metricSlug`, `stageKey`, `value`, `unit`, `passStatus`); why it failed: `evaluation-runs.failures` (`stageKey`, `category`, `subtype`, `severity`, `role`, `description`); its events and evidence, `evaluation-runs.manifest` (`complete`, `missingFields`), `evaluation-runs.verdicts` |
 | Row per run for a spreadsheet? | `evaluation-jobs.export-results` (`format` `csv` or `json`) |
+
+`groupBy` and `splitBy` of `evaluation-jobs.stage-success` and `evaluation-jobs.violin-data` take run dimensions: `policy_version`, `subject_version`, `embodiment`, `robot_id`, `terminal_state`, `held_out` (the held-out conditions joined by `+`, else `nominal`), `baseline_side` (`baseline` or `candidate`), `cell_id`, `scenario_id`, or a key of the run's condition (a sampled scenario variable, else a randomization axis). A group's runs: `evaluation-runs.list` with `jobId` and `dimension` its `groupKey`, for example `{"baseline_side": "candidate", "lighting": "low"}`.
 
 Give the user the two or three conditions that explain most failures, with a run to look at for each, not the raw tables.
 
@@ -176,7 +181,7 @@ Runs that do not move:
 
 - **Past their timeout**: rFabric closes a run that is past the protocol's `timeoutS` without a final report as `timeout`. To do it now for one job: `evaluation-jobs.create-stuck-sweep-item` (returns `examined`, `closed`); for every job of a workspace: `evaluation-jobs.create-stuck-sweep` with `workspaceId`. A closed run is final: a late result is refused.
 - **Repeat a run that compute executed** (replay or simulation, never a by-hand run): `evaluation-runs.retry` replaces a finished run with a fresh one in the same slot, under the same condition. The old run stays readable and links to its replacement; a completed job reopens and its report is rebuilt.
-  - A run that broke for infrastructure reasons (`terminalState` `system_error`) needs no flag.
+  - A run that broke for infrastructure reasons (`outcome` `system_error`) needs no flag.
   - Any other run needs `{"force": true}`: say first that this discards a valid result from every number of the job.
 
 ### 7. Export and re-score
@@ -196,14 +201,14 @@ Evidence does not stay forever: `evaluation-retention.list-budgets` shows, in da
 ### 8. Compare
 
 - **Candidate against baseline**: `evaluation-comparisons.create` with `workspaceId`, `baselineJobId`, `candidateJobIds` and optionally `primaryMetric` (default: the protocol's). All jobs must have run under the same protocol version (the same `protocolId`); test runs are refused.
-- Read `conclusion`: `status` is `candidate_better`, `baseline_better`, `no_clear_difference` or `inconclusive`, and `winner` is a subject id. Per candidate: `baselineValue`, `candidateValue`, `absoluteDelta`, its `ci`, `statisticallySignificant`, `practicallySignificant` and `regressions` (`metric_regression`, `safety_regression`). `design` says whether the comparison is `paired`: it is when both jobs used the same seed and run count.
+- Read `conclusion`: `status` is `candidate_better`, `baseline_better`, `no_clear_difference` or `inconclusive`, and `winner` is a subject id. Per candidate: `baselineValue`, `candidateValue`, `absoluteDelta`, its `ci`, `statisticallySignificant`, `practicallySignificant` and `regressions`: each with `kind` (`metric_regression`, `safety_regression`), `reason` and `runIds`, the candidate runs behind it (runs with a new safety violation, or the counted runs that did not succeed on a pass/fail metric; empty for a numeric metric). Give the user those runs to look at. `design` says whether the comparison is `paired`, with `pairingReason`: paired when both jobs ran exactly the same cases, each once, every run matched to the baseline run of the same case (`caseKey`). A run without a case (`caseKey` `null`: its protocol has no scenario) makes the comparison unpaired.
 - **The standing baseline** of a protocol is the job to compare against by default: `evaluation-protocols.list-standing-baseline` (set it in `evaluation-definitions`).
 - **Across evaluations**: `evaluation-protocols.trends` (one subject over time, `query` `workspaceId`, `subjectType`, `subjectId`, `metric`) and `evaluation-protocols.leaderboard` (subjects ranked under one protocol version, `query` `workspaceId`, `metric`, `protocolVersion`).
 - Past comparisons: `evaluation-comparisons.list`, `evaluation-comparisons.get`.
 
 ### 9. Reproduce a run
 
-`evaluation-jobs.reproduce` (the job id in `pathParameters`, `{"runId": "evr_..."}` as body) launches a new one-run job with the same protocol version, subject and seed, and returns the `job` and the `reproductionTuple`. Use it for a suspicious or failed run. It runs the protocol as defined, without the by-hand override: use it for `replay` jobs and for protocols whose own `executionMode` is `manual`. The seed reproduces the conditions, not the exact motion of a physical robot. A simulation run is refused (`simulation_requires_suite`): launch its suite again in `simulation-suite`, with what the report's `reproductionCommand` names.
+`evaluation-jobs.reproduce` (the job id in `pathParameters`, `{"runId": "evr_..."}` as body) launches a new one-run job with the same protocol version, subject and seed, and returns the `job` and the `reproductionTuple`. Use it for a suspicious or failed run. A by-hand run reproduces by hand, and a replay run replays its own episode. Under a blind protocol a caller without an elevated role reads the `reproductionTuple` with the subject fields (`subjectType`, `subjectId`, `subjectVersion`, `sourceJobId`) null. The seed reproduces the conditions, not the exact motion of a physical robot. A simulation run is refused (`simulation_requires_suite`): launch its suite again in `simulation-suite`, with what the report's `reproductionCommand` names.
 
 ## Recurring evaluations
 
@@ -213,8 +218,8 @@ Evidence does not stay forever: `evaluation-retention.list-budgets` shows, in da
 - Before the call say what recurs: every interval a job starts and uses compute, or waits for a person at the robot, until the schedule is disabled.
 - Each occurrence is an ordinary job. It pins the newest published version of the protocol at launch, and runs with the launch permissions its creator had when the schedule was created.
 - Without `startAt` the first occurrence is one interval from now. A schedule that fell behind launches once, not once per missed interval.
-- Read `evaluation-schedules.get`: `nextRunAt`, `lastLaunchedAt`, `lastJobId`, and in `meta` the `lastError` of an occurrence that could not launch.
-- Pause with `evaluation-schedules.update` (`enabled` `false`), change `intervalS` or `nextRunAt` the same way, remove with `evaluation-schedules.delete`. `evaluation-schedules.run-due` with `workspaceId` launches every due schedule now.
+- Read `evaluation-schedules.get`: `nextRunAt`, `lastLaunchedAt`, `lastJobId`, and in `meta` the `lastError` of an occurrence that could not launch: `message`, `blockers` (each a `code` of Problems; empty when no preflight refused it) and `at`. The jobs it launched: `evaluation-jobs.list` with `scheduleId`.
+- Pause with `evaluation-schedules.update` (`enabled` `false`), change `intervalS` or `nextRunAt` the same way, remove with `evaluation-schedules.delete`. `evaluation-schedules.run-due` with `workspaceId` launches every due schedule now; it returns `launched` (`scheduleId`, `jobId`) and `failed` (`scheduleId`, `error`, `blockers`).
 - Simulation protocols cannot be scheduled here (`simulation_requires_suite`).
 
 ## Cancel
@@ -240,6 +245,8 @@ Evidence does not stay forever: `evaluation-retention.list-budgets` shows, in da
 | `evaluation_job_not_terminal` 409 | report asked before the job ended; `details` has `jobId`, `status` | follow the job (step 4) |
 | `FORBIDDEN` 403 with `evaluationJobId` in `details` | the protocol's results are restricted | someone with `evaluationDefinition:publish` reads them |
 | 409 on `evaluation-runs.retry`, `reason` `retry_requires_force`, `already_retried` or `run_not_terminal` in `details` | a valid result needs `force`; the run was replaced before; the run has not ended | decide with the user (step 6) |
+| `BAD_REQUEST` 400 "takes one value, without an operator" on `evaluation-runs.list` | `stoppedAtStage`, `safetyPass`, `reportId` or `replaced` was sent as `{"in": [...]}` or with another operator | send one value |
+| `FORBIDDEN` 403 "Filtering by subject identity" on `evaluation-runs.list` | `subjectId`, `subjectType` or a `policy_version` / `subject_version` dimension without an elevated role | select by `jobId` or `protocolId` |
 | Job stays `running`, runs in `awaiting_execution` or `awaiting_review` | it waits for people | `evaluation-grading`; tell the user who |
 
 ## Done when
@@ -272,8 +279,10 @@ Evidence does not stay forever: `evaluation-retention.list-budgets` shows, in da
 | Report; exits non-zero unless `pass` | `rfabric eval report <job-id> [--format junit]`, `rfabric eval gate <job-id>` |
 | Infrastructure view, stuck runs | `rfabric evaluation-job operations <job-id>`, `rfabric evaluation-job stuck-sweep <job-id>` |
 | Evidence | `rfabric evaluation-run evidence <run-id>`, `rfabric evaluation-run evidence-download <run-id> <evidence-id> <file>` |
+| Select runs | `rfabric evaluation-run ls -f jobId=<job-id> [--outcome <outcome>]... [--failure-category <category>]... [--stopped-at-stage <stage key>] [--safety-pass[=false]] [--dimension <name>=<value>]... [--report <report-id>] [--replaced[=false]] [--sort durationS:desc]` |
+| One run's measurements, failures | `rfabric evaluation-run metric-results <run-id>`, `rfabric evaluation-run failures <run-id>` |
 | Compare | `rfabric eval compare --baseline <job-id> --candidate <job-id> [--primary-metric <slug>]` |
 | Re-evaluate | `rfabric eval reevaluate <job-id> --protocol-version <n>` |
 | Reproduce | `rfabric evaluation-job reproduce <job-id> <run-id>` |
-| Schedules | `rfabric evaluation-schedule ls`, `rfabric evaluation-schedule run-due` |
+| Schedules | `rfabric evaluation-schedule ls`, `rfabric evaluation-schedule run-due`, `rfabric evaluation-job ls --schedule <schedule-id>` |
 | Cancel | `rfabric evaluation-job cancel <job-id>` |

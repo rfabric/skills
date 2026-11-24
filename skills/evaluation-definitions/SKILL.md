@@ -62,7 +62,7 @@ Definitions kept as files in the user's repository follow another path: read [de
 
 | Option | Choose when | Consequence |
 | --- | --- | --- |
-| Registry: drafts created through operations (recommended to start) | a few definitions, edited in conversation or in the app | each definition is published on its own, in dependency order |
+| Registry: drafts created through operations (recommended to start) | a few definitions, edited in conversation or in the app's Builder | each definition is published on its own, in dependency order |
 | Definition directory: files in the user's repository | the team reviews changes in pull requests, or a pipeline publishes | the whole directory is applied at once; once a pipeline applies it, those slugs change only through the files (`definition_repository_managed`) |
 
 **What the protocol fixes** (frozen at publish; a change means another version)
