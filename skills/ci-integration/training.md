@@ -116,8 +116,8 @@ The pool that runs the template must pull the image from where the pipeline push
 | Option | Choose when | Consequence |
 | --- | --- | --- |
 | Public repository | the trainer code may be public | nothing to connect; on GitHub the user makes the package public once (`github-actions.md`, The first run) |
-| Private repository in Amazon ECR or Google Artifact Registry | the trainer code must stay private | two grants on the user's side: the container registry of the workspace (rFabric checks the image) and a pull grant on the repository to rFabric's pull identity (the machines pull it). Both: `compute-setup`, section Container registry access. The pipeline then signs in to that registry instead of the CI provider's |
-| A pool in the user's own cloud account | the user trains there anyway | the image goes into that account's registry (`training-run`, step 2) |
+| Private repository in Google Artifact Registry, on a managed Google Cloud pool | the trainer code must stay private and the deployment offers it (`compute-setup`, Container registry access, step 5) | two grants on the user's side: the container registry of the workspace (rFabric checks the image) and a pull grant on the repository to rFabric's pull identity (the machines pull it). The pipeline then signs in to that registry instead of the CI provider's. Not offered for Amazon ECR on managed AWS pools yet |
+| A pool in the user's own cloud account | the trainer code must stay private on AWS, or the user trains there anyway | the image goes into that account's registry (`training-run`, step 2) |
 
 ### 4. Create the two credentials
 

@@ -147,13 +147,13 @@ Pools pull container images: the user's trainer, simulator, enrichment or candid
 | Pool | Task | The image must be in |
 | --- | --- | --- |
 | rFabric's managed pools | simulation attempts (`"sim.attempt"`): the candidate and the simulator image | a repository that allows pulls without sign-in, or a private repository in an Amazon ECR account or Google Artifact Registry project connected as a **container registry** (below). A private image in any other registry cannot be pulled |
-| rFabric's managed pools | training (`"training.run"`): the trainer image | a repository that allows pulls without sign-in, or a private repository in Amazon ECR or Google Artifact Registry with two grants: its account or project connected as a **container registry** (below), through which rFabric checks the image, and read access on the repository for rFabric's pull identity, as which the machines pull it (step 5 below) |
+| rFabric's managed pools | training (`"training.run"`): the trainer image | a repository that allows pulls without sign-in, or rFabric's own registry. A private repository of the user is not offered on managed pools in AWS (the target's `provider` `aws` in `compute-targets.get`): rFabric shows no pull statement for Amazon ECR. On managed pools in Google Cloud, a private Google Artifact Registry repository works only where the deployment offers it (step 5) |
 | rFabric's managed pools | every other task type (enrichment) | a repository that allows pulls without sign-in. A container registry does not help here |
 | pools of a connected AWS target | training, enrichment (simulation attempts stay on rFabric's managed pools) | a repository in that account's own Amazon ECR (the compute stack grants the pull) |
 | pools of a connected Google Cloud target | every task type its pools list | that project's Artifact Registry, once the worker service account may read it: one command, in `connected-gcp.md` under "Images on this target" |
 | pools of a `self_hosted` target | every task type its pools list | any registry Docker on that host can pull from: the user runs `docker login <registry>` once as the user the worker runs as |
 
-An image that must stay private and is neither a simulation nor a trainer image (an enrichment method): run it on a pool in a connected account.
+An image that must stay private and is neither a simulation image nor a trainer image on a managed Google Cloud pool that offers the grant (an enrichment method; a trainer on managed AWS pools): run it on a pool in a connected account.
 
 A container registry is a ProviderCredential with `purpose` `container_registry`: a keyless grant (`authMethod` `assumeRole` on AWS, `workloadIdentity` on Google Cloud) through which rFabric checks the images of a simulation launch and the trainer image of a training run before they start, and hands a simulation machine a short-lived sign-in to pull them. Images are never copied out of the user's registry; the grant cannot push or delete.
 
@@ -163,15 +163,15 @@ A container registry is a ProviderCredential with `purpose` `container_registry`
 | 2 | Choose the scope | user decides | none |
 | 3 | Grant read access to the images | AWS stack: user or their cloud administrator. Google Cloud script: agent with a shell; otherwise user or their cloud administrator | `provider-credentials.setup-token` |
 | 4 | Check the grant and register it | agent | `provider-credentials.probe-grant`, `provider-credentials.create` |
-| 5 | Trainer images only: let rFabric's machines pull the repository | user or their cloud administrator | `provider-credentials.setup-token` |
+| 5 | Google Cloud trainer images only, where offered: let rFabric's machines pull the repository | user or their cloud administrator | `provider-credentials.setup-token` |
 
 1. `workspaces-provider-credentials.list`: rows with `purpose` `container_registry`. rFabric matches an image to a registry by its address: the AWS account in an ECR host, the project in an Artifact Registry path. An `active` row for that account (in `principal`) or project (`providerConfig.projectId`) already covers the image: stop and say so. A workspace's own registry wins over the organization's.
 2. Decide the scope with the user: `organization` (every workspace) or `workspace`. Creating it needs organization role `owner` or `admin` for that scope.
 3. Read `container-registry.md` in this skill's directory for the "Your turn" block and the bodies: `provider-credentials.setup-token` with `purpose` `container_registry` (no `region`), then the stack or the script. It creates one read-only role (AWS) or service account (Google Cloud) in their account, and nothing in rFabric yet.
 4. `provider-credentials.probe-grant` until `assumed` is `true` and `discovery.pullImages` is `true`, then `provider-credentials.create`.
-5. Trainer images on rFabric's managed pools also need the repository to grant read access to rFabric's pull identity, which `provider-credentials.setup-token` names as `aws.imagePullRoleArn` or `gcp.imagePullMember` (with `purpose` `container_registry`). `container-registry.md`, section "Trainer images", has the block. A null value means this rFabric deployment pulls no private trainer images on its managed pools: use a public repository or a pool in a connected account.
+5. A private trainer image on rFabric's managed Google Cloud pools also needs the repository to grant read access to rFabric's pull identity, which `provider-credentials.setup-token` (`cloud` `gcp`, `purpose` `container_registry`) names as `gcp.imagePullMember`. When it is null, this deployment does not offer it yet: use a public repository or a pool in a connected account. `container-registry.md`, section "Trainer images", has the block. On managed AWS pools there is no such grant: rFabric does not pull private Amazon ECR trainer images there.
 
-Done when: `provider-credentials.get` shows the credential `active` with `purpose` `container_registry`, and the probe reported `pullImages` `true`. For a trainer image also: the user confirmed the repository grant of step 5. The launch preview's `trainerImage` check (`training-run`, step 4) proves rFabric can read the image; only the first run reaching `running` proves the machines can pull it.
+Done when: `provider-credentials.get` shows the credential `active` with `purpose` `container_registry`, and the probe reported `pullImages` `true`. For a Google Cloud trainer image also: the user confirmed the repository grant of step 5. The launch preview's `trainerImage` check (`training-run`, step 4) proves rFabric can read the image; only the first run reaching `running` proves the machines can pull it.
 
 ## Qualify a pool for gating evaluations
 

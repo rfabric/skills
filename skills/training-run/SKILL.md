@@ -236,7 +236,7 @@ To get the files: `checkpoints.download-url` returns `files[]` (`relativePath`, 
 | `checkpoint_not_downloadable` (409) | rFabric holds no bytes for this Checkpoint | pick a Checkpoint with `storageState` `verified`, or one stored by an rFabric run |
 | `CONFLICT` (409) on cancel or retry | the run is already finished (cancel), or is not `failed` or `cancelled` (retry) | read the run's `status` |
 | `queued` for 15 minutes | no machine has taken the run | report it; check the pool and its target in `compute-setup` |
-| attempts fail before `running` with a pull error in the log | the pool cannot pull the trainer image from that registry; on rFabric's managed pools with a private repository, the repository does not grant rFabric's pull identity read access | grant it (`compute-setup`, Container registry access, step 5), or push the image to a registry the pool's target can pull from (`trainer-image.md`, Where to push it), update the template with the reference, launch again |
+| attempts fail before `running` with a pull error in the log | the pool cannot pull the trainer image from that registry; on a managed Google Cloud pool with a private repository, the repository does not grant rFabric's pull identity read access | push the image to a registry the pool's target can pull from (`trainer-image.md`, Where to push it), or on Google Cloud grant the pull (`compute-setup`, Container registry access, step 5); update the template with the reference, launch again |
 
 ## Done when
 
