@@ -148,7 +148,7 @@ A verified Checkpoint cannot be uploaded again. To replace its bytes, register a
 
 ### 7. Export the record
 
-- `training-runs.reproducibility-export` returns `document` (`config`, `datasetVersionIds`, `simAssetVersionIds`, `codeVersion`, `baseModelId`, `randomSeed`, `environment`, `metrics`, `provenanceMix`, `consumedManifestChecksum`, `runId`, `exportedAt`, `schemaVersion`) and `signature`, a base64 HMAC-SHA256 over the document's JSON. Hand both over together and unchanged: any edit to the document breaks the signature.
+- `training-runs.reproducibility-export` returns `document` (`config`, `datasetVersionIds`, `simAssetVersionIds`, `codeVersion`, `ci` (the CI build that launched the run, null for this run), `image` (the trainer image, null without one), `baseModelId`, `randomSeed`, `environment`, `metrics`, `provenanceMix`, `consumedManifestChecksum`, `runId`, `exportedAt`, `schemaVersion`) and `signature`, a base64 HMAC-SHA256 over the document's JSON. Hand both over together and unchanged: any edit to the document breaks the signature.
 - `training-runs.export` returns the run's stored fields and every metric point in one answer. It can be large; save it to a file instead of printing it.
 
 ## Import finished runs

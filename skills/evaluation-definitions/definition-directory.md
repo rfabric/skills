@@ -35,6 +35,7 @@ A definition directory is a folder of the user's repository holding one definiti
 - The other fields are those of the kind's create operation, with every id replaced by a reference: `criteriaRef`, `scenarioRef`, `metricRefs` (slugs), `targetRef` (a task slug).
 - A reference is `slug` or `slug@latest-published` (the version this apply publishes, else the newest published one), or `slug@<version>` (exactly that version). An rFabric id in a reference is refused.
 - JSON Schemas for editors: `https://api.rfabric.io/api/definition-directories/schemas/<kind>.json`, with `<kind>` one of `metric`, `criteria`, `scenario`, `protocol`, `suite`, `asset`.
+- Launch template files (`launch-templates/`, kind `launch_template`) are training, not evaluation: they live in their own directory and are applied separately (`training-run`). A request manages one family: a launch template file in this directory is a `kind_not_requested` problem.
 
 ## Steps
 
@@ -58,7 +59,7 @@ Then I: read them, adapt them with you, and preview the directory.
 
 Without the CLI, write the files yourself from the tables above and the body shapes in `SKILL.md`. A complete simulation starter (scene, scenario, suite, pipeline file) is in `simulation-suite`.
 
-**Existing definitions.** `definition-directories.export` with `query` `workspaceId` (and `protocol`, a slug, for one protocol with what it references and the suites over it) returns `files`, each a `path` and its `content`: write them into the directory. For each entry of `assetContents`, get the content of `simAssetVersionId` with `sim-assets.versions-fetch-url`, download it to `path` and check it against `contentHash`. A preview of an unchanged export reports every entry `unchanged`.
+**Existing definitions.** `definition-directories.export` with `query` `workspaceId` and `kind`, repeated once per evaluation kind to export (`metric`, `criteria`, `scenario`, `protocol`, `suite`, `scene`, `object`, `robot_description`; the CLI asks for all eight), and optionally `protocol` (a slug, for one protocol with what it references and the suites over it), returns `files`, each a `path` and its `content`: write them into the directory. For each entry of `assetContents`, get the content of `simAssetVersionId` with `sim-assets.versions-fetch-url`, download it to `path` and check it against `contentHash`. A preview of an unchanged export reports every entry `unchanged`.
 
 ### 2. Edit the files
 
@@ -69,6 +70,7 @@ Change the definitions in the files, following "The files" above and the field r
 `definition-directories.create` with `action` `preview` writes nothing. Body:
 
 - `workspaceId`.
+- `kinds`: the file kinds the request manages, every evaluation kind as the CLI sends them: `["metric", "criteria", "scenario", "protocol", "suite", "scene", "object", "robot_description"]`. Removed definitions, `deprecateRemoved` and the managed-slug check read only these kinds. The same `kinds` go into the test run and the apply.
 - `path`: the directory's path inside the repository (`""` for the root).
 - `files`: every definition file as `{"path", "content"}`, `path` relative to the directory, `content` the file's text.
 - `assetContents`: one entry per asset descriptor: its `path`, and the lowercase hex SHA-256 (`contentHash`) and byte size (`contentSize`) of the content it points at. `[]` when there is no asset. A single file or archive is hashed as stored. A folder must be packed the way the CLI packs it: with folder content, the preview, the test run and the apply go through the CLI commands at the end of this file. With a shell, run them yourself after the user approves; without one, hand them over as a "Your turn" block.
@@ -125,6 +127,8 @@ Done when the Operation is `succeeded` and a second preview reports every entry 
 | `content_missing` | `assetContents` lacks, repeats or misnames a descriptor, or the asset content is not uploaded yet | send exactly one entry per descriptor; during apply, upload the listed content |
 | `asset_validation_failed` | uploaded asset content failed validation; the message says why | fix the content (`sim-asset-build`) |
 | `test_run_selection_empty` | no suite matches `suites`, `tags` or `changedOnly` | widen the selection |
+| `kind_not_requested` | a file's `kind` is not in the request's `kinds`: a launch template file in the evaluation directory, or a kind left out of `kinds` | move launch template files to their own directory (`training-run`); send every evaluation kind |
+| `VALIDATION_ERROR` 422 on `kinds`, or on `kind` of the export | missing, repeated, or `launch_template` beside evaluation kinds | send the evaluation kinds only, each once |
 | `definition_repository_managed` 409 | another repository or path manages the slug, or the request has no `ci` | apply from the owning directory with its `ci` |
 | `idempotency_conflict` 409 | the key was used with another request | use a fresh key |
 | `VALIDATION_ERROR` 422 on preview with `idempotencyKey` | a preview writes nothing and takes no key | drop the key |
@@ -138,7 +142,7 @@ Done when the Operation is `succeeded` and a second preview reports every entry 
 
 ## The rfabric CLI
 
-The commands run in the repository; `--dir` defaults to `eval`. The CLI reads the files, packs and hashes asset folders, uploads missing content and waits.
+The commands run in the repository; `--dir` defaults to `eval`. The CLI reads the files, packs and hashes asset folders, uploads missing content and waits. `rfabric eval` manages the evaluation kinds only: it refuses launch template files with "apply it with rfabric training apply".
 
 | Step | CLI |
 | --- | --- |

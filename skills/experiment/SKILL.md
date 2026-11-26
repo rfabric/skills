@@ -62,10 +62,10 @@ Look first: `experiments.list` with query `workspaceId` and `q` (full text over 
 
 A follow-up is a launch from the same LaunchTemplate, in the same Experiment, on the same data, with one parameter changed.
 
-1. Read the parent: `training-runs.get` gives `launchTemplateId`, `experimentId`, `config`, `computeConfig`, `datasetVersionIds`, `simAssetVersionIds`, `baseModelId`.
-2. Read the template: `launch-templates.get` gives `defaultConfig`, `defaultComputeConfig`, `guardrails` and `requiredTags`. The parent's overrides are the keys whose value in `config` (or `computeConfig`) differs from the template's defaults.
-3. Launch with `training-orchestration.launch-templates-launch`: the parent's `experimentId`, `datasetVersionIds`, `simAssetVersionIds` and `baseModelId`, the parent's overrides plus the one change in `configOverrides`, and `tags` holding the template's `requiredTags`. When an evaluation motivated the change, add the tag `evaluationJob=<evaluation job id>`. Preview the cost and tell the user before the call, as in `training-run`.
-4. Prove the isolation: `training-runs.diff` with `leftRunId` the parent and `rightRunId` the follow-up must return exactly one entry in `changedParameters` (`key`, `left`, `right`) and empty `datasetVersionDelta` and `simAssetVersionDelta`. More than one difference: say which, and ask whether to keep the run.
+1. Read the parent: `training-runs.get` gives `launchTemplateId`, `experimentId`, `config`, `computeConfig`, `datasetVersionIds`, `simAssetVersionIds`, `baseModelId`, `codeVersion` and, for a run a pipeline launched, `ci`.
+2. Read the template: `launch-templates.get` gives `defaultConfig`, `defaultComputeConfig`, `guardrails` and `requiredTags`. The parent's overrides are the keys whose value in `config` (or `computeConfig`) differs from the template's defaults. A parent that ran a pipeline's trainer image has `computeConfig.image` among them.
+3. Launch with `training-orchestration.launch-templates-launch`: the parent's `experimentId`, `datasetVersionIds`, `simAssetVersionIds` and `baseModelId`, the parent's overrides plus the one change in `configOverrides`, and `tags` holding the template's `requiredTags`. When the parent's overrides hold `image`, also send the parent's `codeVersion` as `codeVersion`; without it the follow-up records no code version. When an evaluation motivated the change, add the tag `evaluationJob=<evaluation job id>`. Preview the cost and tell the user before the call, as in `training-run`.
+4. Prove the isolation: `training-runs.diff` with `leftRunId` the parent and `rightRunId` the follow-up must return exactly one entry in `changedParameters` (`key`, `left`, `right`), empty `datasetVersionDelta` and `simAssetVersionDelta`, and the same `left` and `right` in `image` and `codeVersion`. More than one difference: say which, and ask whether to keep the run. `ci` differs when only one of the two was launched by a pipeline; that is no difference in what was trained.
 
 - The changed parameter must be in the template's `allowedOverrideKeys`. Otherwise the launch is refused, and opening the key is a template edit by an admin (`training-run`).
 - A parent without `launchTemplateId` was not launched from a template: its follow-up is recorded through `external-training-run`.
@@ -87,7 +87,7 @@ Read the runs first: `training-runs.list` with query `experimentId`, every page.
 | --- | --- | --- |
 | Which run is best on one metric | `experiments.leaderboard`, query `metric` (the exact series name), `mode` (`best` unless set), `limit` (100 unless set, at most 500) | rows with `rank`, `runId`, `name`, `status`, `metricValue`, `datasetVersionIds`, `config`; highest value first, runs without the metric last |
 | How the curves relate | `experiments.compare`, body `runIds` (1 to 100) and optional `series` | `series`: per metric name the points of all runs (`runId`, `step`, `observedAt`, `value`); `runs`: per run `finalMetrics`, `bestMetrics`, `config`, `datasetVersionIds`, `codeVersion`, `baseModelId` |
-| What differs between two runs | `training-runs.diff`, body `leftRunId`, `rightRunId` | `changedParameters`, `datasetVersionDelta`, `simAssetVersionDelta` (`added` and `removed`, relative to the left run), `codeVersion`, `baseModelId` |
+| What differs between two runs | `training-runs.diff`, body `leftRunId`, `rightRunId` | `changedParameters`, `datasetVersionDelta`, `simAssetVersionDelta` (`added` and `removed`, relative to the left run), and `left` and `right` of `codeVersion`, `baseModelId`, `image` (the trainer image, by digest) and `ci` (the build that launched the run, null when none did) |
 | How parameters relate to outcomes across many runs | `experiments.parallel-coordinates`, body `runIds` (1 to 500, any Experiment) | `axes` (every parameter, then every metric series) and one row per run with its value on each axis, the last reported value for a metric, `null` where a run has none |
 
 - The leaderboard ranks highest value first in both modes, and `bestMetrics` is each series' highest value: use them for metrics where higher is better. For a metric where lower is better, rank the runs yourself, ascending, by the series' value in `finalMetrics` of `experiments.compare`; for the lowest point of a curve read the series points.
@@ -171,7 +171,7 @@ Before creating members, tell the user what it costs:
 | --- | --- |
 | List, create | `rfabric experiment ls [--search <text>] [--tag <tag>]`, `rfabric experiment create --field name=<name> --field hypothesis=<text>` |
 | From a template | `rfabric experiment-template ls`, `rfabric experiment from-template --template <template-id> --name <name> [--hypothesis <text>] [--tag <tag>]` |
-| Follow-up run | `rfabric launch-template launch <template-id> --experiment <experiment-id> --config-overrides '{"chunkSize":20}' --tag evaluationJob=<job-id>` |
+| Follow-up run | `rfabric training run <template slug or id> --experiment <experiment-id> --config-overrides '{"chunkSize":20}' --tag evaluationJob=<job-id>` (a parent on a pipeline's image: add `--image <image> --code-version <commit>`) |
 | Find follow-ups | `rfabric training-run ls -f experimentId=<experiment-id> -f tag=evaluationJob=<job-id>` |
 | Diff two runs | `rfabric training-run diff --left <run-id> --right <run-id>` |
 | Leaderboard | `rfabric experiment leaderboard <experiment-id> --metric <series> --mode final [--limit 500]` |

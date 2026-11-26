@@ -214,7 +214,7 @@ Then report: job id, episodes, size, `manifestChecksum`, where the archive and t
 | --- | --- | --- |
 | Channels of one sensor stream as a table | `sensor-streams.timeseries-export` | `channels` (comma-separated keys from the stream's `channels` in `sensor-streams.get`), `startNs` and `endNs` in nanoseconds (`startNs` below `endNs`, `endNs` excluded), `format` `csv` or `parquet`. Rows are `episodeId,sensorStreamId,channelKey,tNs,value` at full resolution. The data comes back in the response, so keep the window small; each call is audited. An unknown channel key yields no rows |
 | Metadata of entities as a portable bundle | `metadata.export` | `kind` inside `selection`: `ids` with the entity ids, or `workspace`; `format` `json` or `ndjson`. Names, attributes, tags, relationships and lineage only, no recordings. Select by `ids`: a whole workspace returns through the conversation |
-| Proof of what a training run consumed | `training-runs.reproducibility-export` | `document` (config, `datasetVersionIds`, code version, base model, seed, environment, metrics, `consumedManifestChecksum`) and a `signature`. Keep both exactly as returned: any edit breaks the signature, which only rFabric can check. `training-runs.list` with `datasetVersionId` finds the runs of a version |
+| Proof of what a training run consumed | `training-runs.reproducibility-export` | `document` (config, `datasetVersionIds`, code version, trainer image, the CI build that launched it, base model, seed, environment, metrics, `consumedManifestChecksum`) and a `signature`. Keep both exactly as returned: any edit breaks the signature, which only rFabric can check. `training-runs.list` with `datasetVersionId` finds the runs of a version |
 
 ## Problems
 
