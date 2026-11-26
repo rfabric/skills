@@ -113,7 +113,7 @@ Register (`provider-credentials.create`):
 
 Step 5 of "Container registry access", Google Cloud only. A simulation machine gets a short-lived sign-in from the container registry; a training machine of rFabric's managed Google Cloud pools pulls as rFabric's own pull identity instead, which the repository must let read. The container registry above is still needed: through it rFabric checks the trainer image before a run starts. Do this once per repository that holds trainer images. The value is `gcp.imagePullMember` of the `provider-credentials.setup-token` answer with `cloud` `gcp`. When it is null, stop: this deployment does not offer private trainer images on its managed pools yet.
 
-Private trainer images in Amazon ECR are not offered on rFabric's managed AWS pools yet: rFabric shows no pull statement for them. A trainer image for those pools is public, in rFabric's own registry, or runs on a pool in the user's own AWS account (`connected-aws.md`).
+Private trainer images in Amazon ECR are not offered on rFabric's managed AWS pools yet: AWS has no rFabric pull identity a repository could grant, so `provider-credentials.setup-token` names none for AWS. A trainer image for those pools is public, in rFabric's own registry, or runs on a pool in the user's own AWS account (`connected-aws.md`).
 
 ```text
 Your turn - a terminal with gcloud, signed in to the project of the trainer image
