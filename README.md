@@ -93,7 +93,7 @@ The plugin adds the skills and registers the MCP server `rfabric` at `https://ap
 - **The whole workflow**, including the steps the user takes outside rFabric (a cloud console, a Git host, an identity provider, a robot's terminal): where, with which rights, the exact values, what it creates, how to undo it, and the read operation that verifies it. Prefer what rFabric generates (links, scripts, policies) over click paths.
 - **MCP first.** Drive the three tools of the `rfabric` server by `operationId`: `describe_operation` before every `call_operation`, `search_operations` to find one. Assume the server is connected: no setup or sign-in steps. CLI commands may follow in a closing section: an agent with a shell (the rFabric agent started with `rfabric agent --with-shell` included) runs them itself after the user approves; without a shell the step is a "Your turn" block for the user's own terminal. A command that prints a secret stays in the user's own terminal on every host.
 - **No secrets in the conversation.** Prefer grants without a secret; send the user to the rFabric app or their own terminal to enter one; announce a secret that rFabric shows once before the call that returns it.
-- **Released operations only.** A skill names only operations that are live in production when it is released.
+- **Released operations only.** A skill names only operations its release may name ([`RELEASE.md`](RELEASE.md), Rules).
 - **Public.** This repository is public: no secrets, no internal hostnames, no unreleased features.
 
 ### Layout

@@ -4,7 +4,7 @@ A skills release is a git tag `v<version>` on this repository, `<version>` semve
 
 ## Rules
 
-- **Only production operations.** A release names only operations that are live in production when it is tagged. A skill that needs an operation production does not serve yet waits on a branch until that API release ships.
+- **Only deployed operations.** A release names only operations that are live, when it is tagged, on the release deployment: production, or rFabric's development deployment while production is not running. A skill that needs an operation the release deployment does not serve yet waits on a branch until that API release ships there.
 - **`main` is installable.** Claude Code and Codex install the plugin from the default branch, so every commit on `main` may reach users: merge only what may ship.
 - **Public.** No secrets, no internal hostnames or URLs other than `https://api.rfabric.io/mcp` and public sites, no unreleased features.
 - **One version.** The version is held by `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`, because each host reads only its own manifest; the tests fail when the two differ. The tag is `v` followed by that version.
@@ -12,7 +12,7 @@ A skills release is a git tag `v<version>` on this repository, `<version>` semve
 ## Steps
 
 1. Set `version` in `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` to the new version (patch for wording fixes, minor for a new skill or a new step, major when a skill drops a workflow users rely on). Plugin users receive the release when the version changes.
-2. Run the tests on an rFabric test deployment (stack) whose API is the version production runs:
+2. Run the tests on an rFabric test deployment (stack) whose API is the version the release deployment runs:
 
    ```bash
    RFABRIC_MCP_URL=<stack MCP URL> RFABRIC_MCP_TOKEN=<access token> node --test
