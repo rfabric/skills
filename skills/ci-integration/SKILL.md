@@ -1,12 +1,12 @@
 ---
 name: ci-integration
 description: >-
-  A CI pipeline that signs in to rFabric without a stored secret and runs simulation suites as a merge check and release gate. Use when the user wants rFabric in GitHub Actions, GitLab CI, Bitbucket Pipelines or another CI system, a service credential or trust for a pipeline, a suite as a required check, a release gated against a baseline, nightly suite runs, a pipeline's verdict or cancellation, or a refused sign-in fixed. Not for authoring a suite or launching it by hand: that is `simulation-suite`.
+  A CI pipeline that signs in to rFabric without a stored secret and runs simulation suites as a merge check and release gate, or launches training on the image it built. Use when the user wants rFabric in GitHub Actions, GitLab CI, Bitbucket Pipelines or another CI system, a pipeline's service credential or trust, a suite as a required check, a release gate against a baseline, training from CI, a pipeline's verdict or cancellation, or a refused sign-in fixed. Not for authoring a suite or launching it by hand (`simulation-suite`).
 ---
 
 # CI integration
 
-The user ends up with a pipeline in their repository that signs in to rFabric with the CI provider's own identity token, runs a simulation suite against the image it built, and fails unless the candidate passes.
+The user ends up with a pipeline in their repository that signs in to rFabric with the CI provider's own identity token, runs a simulation suite against the image it built, and fails unless the candidate passes. A pipeline that launches training instead follows `training.md` in this skill's directory: read it when the user wants to train from CI.
 
 | Entity | Id | What it is |
 | --- | --- | --- |

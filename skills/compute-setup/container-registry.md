@@ -1,6 +1,6 @@
 # Container registry: the grant on the cloud side
 
-Read this for steps 3 and 4 of "Container registry access" in `compute-setup`. It connects an Amazon ECR account or a Google Artifact Registry project so rFabric's managed simulation pools can pull the user's private images. Values in `<angle brackets>` come from `provider-credentials.setup-token` with `query` `{"cloud": "aws" | "gcp", "purpose": "container_registry"}` (no `region`) unless a line says otherwise. It changes nothing. Call it once and show `externalId` to the user with the block: rFabric keeps none until the credential is registered.
+Read this for steps 3 to 5 of "Container registry access" in `compute-setup`. It connects an Amazon ECR account or a Google Artifact Registry project so rFabric's managed pools can use the user's private simulation and trainer images. Values in `<angle brackets>` come from `provider-credentials.setup-token` with `query` `{"cloud": "aws" | "gcp", "purpose": "container_registry"}` (no `region`) unless a line says otherwise. It changes nothing. Call it once and show `externalId` to the user with the block: rFabric keeps none until the credential is registered.
 
 One connected registry serves one AWS account or one Google Cloud project. An organization can hold several.
 
@@ -108,6 +108,50 @@ Register (`provider-credentials.create`):
   "providerConfig": { "projectId": "<projectId>", "workloadIdentityPoolProvider": "<workloadIdentityPoolProvider>" }
 }
 ```
+
+## Trainer images
+
+Step 5 of "Container registry access". A simulation machine gets a short-lived sign-in from the container registry; a training machine of rFabric's managed pools pulls as rFabric's own pull identity instead, which the repository must let read. The container registry above is still needed: through it rFabric checks the trainer image before a run starts. Do this once per repository that holds trainer images. The value comes from the same `provider-credentials.setup-token` answer: `aws.imagePullRoleArn` or `gcp.imagePullMember`. When it is null, stop: this deployment pulls no private trainer images on its managed pools.
+
+```text
+Your turn - AWS console, Amazon ECR, the repository of the trainer image
+Who: someone who may change the repository's policy (ecr:SetRepositoryPolicy).
+Why: rFabric's training machines pull your trainer image as rFabric's pull identity; the repository must allow it to read.
+
+1. Open Amazon ECR > Private registry > Repositories, select <repository>, then Permissions > Edit policy JSON.
+2. Add this statement to the policy's "Statement" list, keeping the statements already there:
+   {
+     "Sid": "RfabricComputeImagePull",
+     "Effect": "Allow",
+     "Principal": { "AWS": "<aws.imagePullRoleArn>" },
+     "Action": ["ecr:BatchGetImage", "ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer"]
+   }
+3. Save.
+
+Lets rFabric: pull images of this repository on its training machines. It cannot push or delete.
+Undo: remove the statement.
+Bring back: tell me when it is saved.
+Then I: preview a launch on the image.
+```
+
+```text
+Your turn - a terminal with gcloud, signed in to the project of the trainer image
+Who: someone who may change the repository's IAM policy (an Artifact Registry admin or project owner).
+Why: rFabric's training machines pull your trainer image as rFabric's pull identity; the repository must allow it to read.
+
+1. Run:
+   gcloud artifacts repositories add-iam-policy-binding <repository> \
+     --project=<project id> --location=<location> \
+     --member=<gcp.imagePullMember> \
+     --role=roles/artifactregistry.reader
+
+Lets rFabric: read images of this repository. It cannot push or delete.
+Undo: the same command with remove-iam-policy-binding.
+Bring back: tell me when it ran.
+Then I: preview a launch on the image.
+```
+
+With a shell where the user's `gcloud` is signed in, run the Google Cloud command yourself after the user approves, as for the script above. The rFabric app shows the same statement or command after a container registry is connected, in the Grant step.
 
 ## Both clouds
 

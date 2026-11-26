@@ -19,7 +19,7 @@ Ask your agent in your own words; it picks the skill. The stages follow the loop
 | Set up | [`storage-connection`](skills/storage-connection/SKILL.md) | Connect an Amazon S3, Google Cloud Storage or S3-compatible bucket, with the steps in your cloud account |
 | Set up | [`compute-setup`](skills/compute-setup/SKILL.md) | Compute for training, simulation, enrichment and builds: rFabric's cloud or your own cloud account, container registry access, quota |
 | Set up | [`model-vendor-credential`](skills/model-vendor-credential/SKILL.md) | Connect a model vendor account (OpenAI, Anthropic, Hugging Face) |
-| Set up | [`ci-integration`](skills/ci-integration/SKILL.md) | Run simulation suites from GitHub Actions, GitLab CI or Bitbucket Pipelines as a merge check and release gate, without a stored secret |
+| Set up | [`ci-integration`](skills/ci-integration/SKILL.md) | Run simulation suites from GitHub Actions, GitLab CI or Bitbucket Pipelines as a merge check and release gate, and launch training on the trainer image the pipeline built, without a stored secret |
 | Fleet | [`robot-enrollment`](skills/robot-enrollment/SKILL.md) | Register a robot, install and provision the robot software, bring it online; reprovision, replace, retire |
 | Fleet | [`fleet-inventory`](skills/fleet-inventory/SKILL.md) | Sites, fleets, devices, missions, tasks, capabilities, bulk changes |
 | Fleet | [`robot-recording`](skills/robot-recording/SKILL.md) | Record demonstrations on a robot and get them uploaded; collection campaigns |
@@ -35,7 +35,7 @@ Ask your agent in your own words; it picks the skill. The stages follow the loop
 | Simulate | [`sim-asset-build`](skills/sim-asset-build/SKILL.md) | Build simulation assets for a robot from a prompt: plan, review, build, qualify or rebuild, publish; add the robot model a build needs |
 | Simulate | [`simulator-setup`](skills/simulator-setup/SKILL.md) | Make a simulator runnable: adapter profile, simulator image, sim assets |
 | Simulate | [`simulation-suite`](skills/simulation-suite/SKILL.md) | Define scenarios and a suite, run a candidate against a baseline in simulation |
-| Train | [`training-run`](skills/training-run/SKILL.md) | Train a policy on rFabric compute from a launch template; follow, retry, pick a checkpoint |
+| Train | [`training-run`](skills/training-run/SKILL.md) | Train a policy on rFabric compute from a launch template, kept in rFabric or as files in your repository; follow, retry, pick a checkpoint |
 | Train | [`experiment`](skills/experiment/SKILL.md) | Group runs around a hypothesis, launch follow-ups, compare, conclude |
 | Train | [`external-training-run`](skills/external-training-run/SKILL.md) | Record a run trained elsewhere: status, metrics, logs, checkpoint upload |
 | Package | [`model-release`](skills/model-release/SKILL.md) | Promote a checkpoint to a model and take it through approval |

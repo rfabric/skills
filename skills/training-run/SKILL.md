@@ -1,12 +1,12 @@
 ---
 name: training-run
 description: >-
-  A policy trained on rFabric compute - a TrainingRun with metrics and checkpoints, launched from a LaunchTemplate that pins your trainer image. Use when asked to train, fine-tune or launch training on rFabric (imitation learning on a dataset version, reinforcement learning in simulation), build a trainer image, create a training configuration or launch template, preview a launch's cost, follow a run, download a checkpoint, or cancel, retry, resume or diagnose a run. Not for a run trained elsewhere (`external-training-run`) or for comparing runs (`experiment`).
+  A policy trained on rFabric compute - a TrainingRun with metrics and checkpoints, launched from a LaunchTemplate that pins your trainer image. Use when asked to train, fine-tune or launch training (imitation learning on a dataset version, reinforcement learning in simulation), build a trainer image, create a training configuration (launch template) or keep it as a file, preview a launch's cost, follow a run, download a checkpoint, or cancel, retry, resume or diagnose a run. Not for runs trained elsewhere (`external-training-run`), comparing runs (`experiment`) or training from CI (`ci-integration`).
 ---
 
 # Train a policy on rFabric compute
 
-The user ends up with a completed TrainingRun (`run_...`): one training job with its metrics, logs and Checkpoints (`ckpt_...`, saved weights that can become a Model). rFabric runs the user's own trainer image on a ComputePool (`cpol_...`, machines of one size). A LaunchTemplate (`ltpl_...`, the app calls it Configuration) is the reusable recipe: image, command, parameters, compute size and limits. Every run belongs to an Experiment (`exp_...`, runs pursuing one hypothesis) and, for imitation learning, reads one or more DatasetVersions (`dsv_...`, frozen data).
+The user ends up with a completed TrainingRun (`run_...`): one training job with its metrics, logs and Checkpoints (`ckpt_...`, saved weights that can become a Model). rFabric runs the user's own trainer image on a ComputePool (`cpol_...`, machines of one size). A LaunchTemplate (`ltpl_...`, the app calls it Configuration, named by a `slug` unique in its workspace) is the reusable recipe: image, command, parameters, compute size and limits. Every run belongs to an Experiment (`exp_...`, runs pursuing one hypothesis) and, for imitation learning, reads one or more DatasetVersions (`dsv_...`, frozen data).
 
 Apply `rfabric-basics` throughout: it defines what to tell the user at each moment and how to call rFabric.
 
@@ -22,7 +22,7 @@ Apply `rfabric-basics` throughout: it defines what to tell the user at each mome
 | 6 | Follow the run | agent | `training-runs.get`, `training-runs.chart-metrics`, `compute-attempts.list`, `compute-attempts.logs` | until `completed`, `failed` or `cancelled`; at most the runtime cap (24 hours unless the template sets one) |
 | 7 | Take the checkpoint | agent | `checkpoints.list`, `checkpoints.download-url` | none |
 
-Steps 1 to 3 happen once per trainer. A user who already has a LaunchTemplate starts at step 4.
+Steps 1 to 3 happen once per trainer. A user who already has a LaunchTemplate starts at step 4. A pipeline that builds the trainer image and launches it is `ci-integration`.
 
 ## Before you start
 
@@ -82,7 +82,7 @@ Skip when `launch-templates.list` (query `workspaceId`) already shows a template
 2. Read `trainer-image.md` in this skill's directory. Check the user's trainer against the handler's calls it lists, choose the registry from its table, and say before the build when the pool requires a publicly readable image.
 3. Fill its block in with the handler image and the user's repository. With a shell, run its commands yourself after the user approves: Docker pulls and pushes with the user's registry logins. Without one, hand it over as a "Your turn" block.
 
-Done when: you hold `<registry>/<repository>@sha256:<64 hex>`. Nothing has pulled the image yet: the first run proves it, so keep that run small.
+Done when: you hold `<registry>/<repository>@sha256:<64 hex>`. Nothing has pulled the image yet: on rFabric's managed pools the preview (step 4) checks that the pool can read it; elsewhere the first run proves it, so keep that run small.
 
 ### 3. Create the LaunchTemplate
 
@@ -92,6 +92,7 @@ Done when: you hold `<registry>/<repository>@sha256:<64 hex>`. Nothing has pulle
 {
   "workspaceId": "wks_...",
   "name": "ACT pick and place",
+  "slug": "act-pick-and-place",
   "computePoolId": "cpol_...",
   "datasetFormat": "lerobot_v3",
   "architecture": "act",
@@ -101,19 +102,23 @@ Done when: you hold `<registry>/<repository>@sha256:<64 hex>`. Nothing has pulle
     "vcpu": 4, "memoryMiB": 16384, "gpuCount": 1, "diskGiB": 50, "nodes": 1,
     "checkpointEveryS": 600
   },
+  "codeVersion": "<commit the image was built from>",
   "guardrails": { "allowedOverrideKeys": ["steps", "batchSize"], "maxRuntimeS": 14400, "maxGpuHours": 4 },
   "requiredTags": []
 }
 ```
 
+- `slug` (required, 1 to 128 characters): unique in the workspace; the CLI, pipelines and template files name the template by it. A taken slug is refused with `launch_template_slug_taken` (409).
+- `codeVersion` (optional): the commit the image was built from, so every run on this image records it. Accepted only with `defaultComputeConfig.image`; an update that changes the image without stating `codeVersion` clears it.
 - `defaultConfig`: `command` (required, a non-empty array of strings), optional `env` (string values). Every other top-level key is a parameter of the run.
 - Name the step count `steps` when the trainer has one: estimates are computed from it (step 4).
 - `defaultComputeConfig` is per node. Left out: `vcpu` 4, `memoryMiB` 16384, `gpuCount` 0, `diskGiB` 50, `nodes` 1, `checkpointEveryS` 600. `nodes` above 1 runs one process per node with the rendezvous variables of PyTorch distributed training.
-- `guardrails`: `allowedOverrideKeys` is one list for parameters and compute settings alike; `maxRuntimeS` caps a run (24 hours without it); `maxGpuHours` is the GPU-hour budget of one run; `maxGpuCount` caps `gpuCount`; `maxInfraRetries` (3 without it) is how often a lost machine is replaced.
+- `guardrails`: `allowedOverrideKeys` is one list for parameters and compute settings alike (add `image` to let a launch run another trainer image, as a pipeline does); `maxRuntimeS` caps a run (24 hours without it); `maxGpuHours` is the GPU-hour budget of one run; `maxGpuCount` caps `gpuCount`; `maxInfraRetries` (3 without it) is how often a lost machine is replaced.
 - `requiredTags`: tags every launch must carry. `architecture`: the model architecture this code trains and can continue; Models promoted from the runs inherit it.
 - Reinforcement learning: `"datasetFormat": null`, and `simAssetVersionIds` for what every launch stages unless it names its own list.
 - Leave out `computePoolId` and `computeTargetId` to place runs on the workspace's default compute target.
-- Change it later with `launch-templates.update`; launched runs keep the config they started with.
+- Change it later with `launch-templates.update`; launched runs keep the config they started with. A template with a non-null `ci` is managed from a repository: `launch-templates.update` and `launch-templates.delete` refuse it with `definition_repository_managed` (409), and the change goes into its file. `launch-templates.delete` refuses a template an improvement program uses with `launch_template_in_use` (409, `details.improvementProgramIds`).
+- Keep templates as files instead: a repository can hold its launch templates, applied by its pipeline or by hand, so a template changes through review like the trainer code. Read `launch-template-files.md` in this skill's directory when the user wants that, runs `rfabric training apply` or `rfabric training export`, or a template is refused with `definition_repository_managed`.
 
 ### 4. Preview the launch
 
@@ -124,10 +129,10 @@ Done when: you hold `<registry>/<repository>@sha256:<64 hex>`. Nothing has pulle
 | `computeOptions[]` | per option: `gpuClass`, `gpuCount`, `vcpu`, `memoryMiB`, `estimateDurationMinutes`, `estimateGpuHours`, `estimateCostUsd`; `isSelected` marks what this body would use; `exceedsMaxRuntime` true means the run would be cut off before it finishes |
 | `estimateBasisRuns` | how many completed runs of this template the estimates rest on |
 | `maxRuntimeS` | the hard stop of this run |
-| `checks[]` | `validationSplit` `failed`: no episode in a `val` or `validation` split; `dataMatchesModel` `failed`: cameras, joint count or rate differ from the data the base model was trained on; `gpuBudget` `failed`: `gpuHoursNeeded` above `gpuHoursLeft` this month. `unknown`: nothing to compare with (no estimate yet, or a base model that records no training data) |
+| `checks[]` | `validationSplit` `failed`: no episode in a `val` or `validation` split; `dataMatchesModel` `failed`: cameras, joint count or rate differ from the data the base model was trained on; `gpuBudget` `failed`: `gpuHoursNeeded` above `gpuHoursLeft` this month; `trainerImage` (only when the launch runs an image) `failed`: the pool cannot read `image`, `code` and `reason` say why, `not_checked`: a pool that pulls with its own registry sign-in (self-hosted, local Docker). `unknown`: nothing to compare with (no estimate yet, or a base model that records no training data), or the registry did not answer |
 
 - Estimates are `null` until a run of the template has completed with its steps reported, and whenever the launch has no numeric `steps` parameter. Say so, and give the worst case instead: GPU hours = `maxRuntimeS` / 3600 x `gpuCount` x `nodes`; cost = `maxRuntimeS` / 3600 x the pool's price per machine hour x `nodes`. Admission counts that whole worst case against the monthly quota and `maxGpuHours` when there is no estimate.
-- A `failed` check does not block the launch. Report it and let the user decide.
+- A `failed` check does not block the preview. Report it and let the user decide; a `failed` `trainerImage` check means the launch will be refused (Problems).
 - Reinforcement learning: no DatasetVersion, so only `gpuBudget` is checked; the estimate still needs `steps`.
 - More than one option appears only when `allowedOverrideKeys` holds `gpuClass` or `gpuCount`. Select one with `computeOverrides` and preview again.
 - `workspaces.compute-quota-usage` shows the month so far (`gpuSeconds`) against `gpuHoursPerMonth`; `hardStop` true means a launch over the quota is refused.
@@ -144,12 +149,13 @@ Find the Experiment with `experiments.list` (query `workspaceId`), or create one
 | `datasetVersionIds` | one or more, all in the template's `datasetFormat` | leave out |
 | `simAssetVersionIds` | leave out | leave out to stage the template's list; any list, also `[]`, replaces it |
 | `configOverrides` | parameters, for example `{"steps": 5000}` | for a first run a short one, for example fewer iterations and environments |
-| `computeOverrides` | compute settings, for example `{"gpuCount": 1}` | the same |
+| `computeOverrides` | compute settings, for example `{"gpuCount": 1}`; `image` runs another trainer image (`<repository>@sha256:<64 hex>`, the template must allow the `image` override) | the same |
+| `codeVersion` | with an `image` override only: the commit that image was built from; left out, the run records none. Without an `image` override the run records the template's `codeVersion` | the same |
 | `baseModelId` | a Model (`mdl_...`) to fine-tune from | the same |
 | `tags` | must include every `requiredTags` entry | the same |
 | `name` | optional; left out, the run gets the name the preview suggests | the same |
 
-The run comes back `queued` with `estimateDurationMinutes`, `estimateCostUsd`, `operationId` and `computeTaskId`. After a timeout repeat the call with the same `idempotencyKey`.
+The run comes back `queued` with `estimateDurationMinutes`, `estimateCostUsd`, `operationId`, `computeTaskId` and `appUrl` (its page in the app). After a timeout repeat the call with the same `idempotencyKey`. A run launched by a pipeline also carries `ci`, the build that launched it (`ci-integration`).
 
 A run's Mission and Task links are copied from its Experiment; read them with `training-run-missions.list` and `training-run-tasks.list` (query `trainingRunId`), add one with `training-run-missions.create` or `training-run-tasks.create`.
 
@@ -209,7 +215,13 @@ To get the files: `checkpoints.download-url` returns `files[]` (`relativePath`, 
 | Signal | What it means | Do |
 | --- | --- | --- |
 | `image_not_pinned` (422) | the image is given by tag | use `<repository>@sha256:<64 hex>` |
-| `VALIDATION_ERROR` (422) with `violations` in `details` | a guardrail: `allowedOverrideKeys` (a key the template does not open), `maxGpuCount`, `requiredTags` (tags missing) | drop the override or add the tags; opening a key is a template edit by an admin |
+| `VALIDATION_ERROR` (422) with `violations` in `details` | a guardrail: `allowedOverrideKeys` (a key the template does not open, `image` included), `maxGpuCount`, `requiredTags` (tags missing) | drop the override or add the tags; opening a key is a template edit by an admin |
+| `VALIDATION_ERROR` (422), `details` `field` `codeVersion` | `codeVersion` without an image: on a launch without an `image` override, on a template without `defaultComputeConfig.image` | state `codeVersion` only with the image it describes |
+| `launch_template_slug_taken` (409) | another template of the workspace holds the slug; `details.launchTemplateId` names it | pick another slug, or update that template |
+| `definition_repository_managed` (409) on update or delete | the template is managed from a repository; `details` name the `repository`, `directoryPath` and `commit` | change its file there (`launch-template-files.md`) |
+| `launch_template_in_use` (409) on delete | an improvement program launches from it; `details.improvementProgramIds` | `improvement-program`: point the program at another template first |
+| `container_registry_not_connected`, `image_access_denied`, `image_not_found`, `image_platform_mismatch` (422) at the launch | on rFabric's managed pools: the pool cannot read the trainer image, or it is built for other machines; the message names the image, the pool and the cause. Nothing was started | `trainer-image.md`, Where to push it; build for the platform the message names |
+| `UPSTREAM_ERROR` (502) at the launch | the registry did not answer the image check | launch again; repeated: check the registry is reachable |
 | `VALIDATION_ERROR` (422), `reason` `target_unavailable` in `details` | the template's compute target is `disabled` or `failed` | `compute-setup` |
 | `launch_template_dataset_required`, `launch_template_reads_no_dataset` (422) | DatasetVersions missing, or given to a template that reads none | match the launch to the template's `datasetFormat` |
 | `dataset_format_mismatch` (422) | a DatasetVersion holds datasets in another format; `details` lists them | pick a version in the template's format |
@@ -224,7 +236,7 @@ To get the files: `checkpoints.download-url` returns `files[]` (`relativePath`, 
 | `checkpoint_not_downloadable` (409) | rFabric holds no bytes for this Checkpoint | pick a Checkpoint with `storageState` `verified`, or one stored by an rFabric run |
 | `CONFLICT` (409) on cancel or retry | the run is already finished (cancel), or is not `failed` or `cancelled` (retry) | read the run's `status` |
 | `queued` for 15 minutes | no machine has taken the run | report it; check the pool and its target in `compute-setup` |
-| attempts fail before `running` with a pull error in the log | the pool cannot pull the trainer image from that registry | push the image to a registry the pool's target can pull from (`trainer-image.md`, Where to push it), update the template with the reference, launch again |
+| attempts fail before `running` with a pull error in the log | the pool cannot pull the trainer image from that registry; on rFabric's managed pools with a private repository, the repository does not grant rFabric's pull identity read access | grant it (`compute-setup`, Container registry access, step 5), or push the image to a registry the pool's target can pull from (`trainer-image.md`, Where to push it), update the template with the reference, launch again |
 
 ## Done when
 
@@ -246,10 +258,11 @@ To get the files: `checkpoints.download-url` returns `files[]` (`relativePath`, 
 | --- | --- |
 | Handler image | `rfabric compute-handler-image ls -f taskType=training.run` |
 | Pools | `rfabric compute-pool ls -f status=active` |
-| Create the template | `rfabric launch-template create --data @template.json` |
-| Preview | `rfabric launch-template launch-preview <template-id> --experiment <experiment-id> [--dataset-version <id>]` |
-| Launch | `rfabric launch-template launch <template-id> --experiment <experiment-id> [--dataset-version <id>] [--config-overrides '{"steps":5000}'] [--compute-overrides '{"gpuCount":1}'] [--base-model <id>] [--tag <tag>]` |
-| Follow | `rfabric training-run wait <run-id>`, `rfabric training-run get <run-id>` |
+| Create the template | `rfabric launch-template create --slug <slug> --data @template.json [--code-version <commit>]` |
+| Preview | `rfabric training run <template slug or id> --preview --experiment <experiment-id> [--dataset-version <id>]` |
+| Launch | `rfabric training run <template slug or id> --experiment <experiment-id> [--dataset-version <id>] [--config-overrides '{"steps":5000}'] [--compute-overrides '{"gpuCount":1}'] [--image <repository>@sha256:<digest> --code-version <commit>] [--base-model <id>] [--tag <tag>] [--idempotency-key <key>] [--wait]`; it prints the run and `App: <the run's page>`, and `--idempotency-key` keys only the launch |
+| Launch template files | `rfabric training export`, `rfabric training apply [--preview]` (`launch-template-files.md`) |
+| Follow | `rfabric training-run wait <run-id>`, `rfabric training-run get <run-id>`; a wait exits 0 completed, 40 cancelled, 50 failed, 60 when `--wait-timeout` ran out (the run goes on) |
 | Metrics | `rfabric training-run chart-metrics <run-id> --tier overview [--series <name>]` |
 | Trainer output | `rfabric compute-attempt ls -f computeTaskId=<task-id>`, `rfabric compute-attempt logs <attempt-id> --tail 200` |
 | Checkpoints | `rfabric checkpoint ls -f trainingRunId=<run-id>`, `rfabric checkpoint download <checkpoint-id> <dir>` |

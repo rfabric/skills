@@ -34,12 +34,12 @@ The pool's compute target decides (`compute-targets.get` with the pool's `comput
 
 | Target | Push the image to |
 | --- | --- |
-| `managed` (rFabric's cloud) | a repository that allows pulls without sign-in |
+| `managed` (rFabric's cloud) | a repository that allows pulls without sign-in, or a private repository in Amazon ECR or Google Artifact Registry with two grants: its account or project connected as a container registry the workspace can use (rFabric checks the image), and read access on the repository for rFabric's pull identity (the machines pull it). Both: `compute-setup`, Container registry access. A private image in any other registry cannot be pulled |
 | `connected`, the user's AWS account | a repository in that account's own Amazon ECR |
 | `connected`, the user's Google Cloud project | that project's Artifact Registry (`compute-setup`, Container registry access, says how its machines get read access) |
 | `self_hosted` | any registry Docker on that host can pull from: the user runs `docker login <registry>` once as the user the worker runs as |
 
-The image holds the user's training code. When that code must not be publicly readable, train on a pool in a connected cloud account (`compute-setup`) and say so before the build.
+The image holds the user's training code. When that code must not be publicly readable, push it to a private Amazon ECR or Google Artifact Registry repository with the two grants above, or train on a pool in a connected cloud account (`compute-setup`), and say so before the build.
 
 ## Build and push the image
 
