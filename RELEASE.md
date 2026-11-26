@@ -12,14 +12,7 @@ A skills release is a git tag `v<version>` on this repository, `<version>` semve
 ## Steps
 
 1. Set `version` in `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` to the new version (patch for wording fixes, minor for a new skill or a new step, major when a skill drops a workflow users rely on). Plugin users receive the release when the version changes.
-2. Run the tests on an rFabric test deployment (stack) whose API is the version the release deployment runs:
-
-   ```bash
-   RFABRIC_MCP_URL=<stack MCP URL> RFABRIC_MCP_TOKEN=<access token> node --test
-   ```
-
-   Every test must pass; the catalog tests fail, never skip, without the two variables.
-3. Merge to `main`, then tag that commit and push the tag:
+2. Merge to `main`, then tag that commit and push the tag:
 
    ```bash
    version="$(jq -r .version .codex-plugin/plugin.json)"
@@ -27,7 +20,9 @@ A skills release is a git tag `v<version>` on this repository, `<version>` semve
    git push origin "v$version"
    ```
 
-4. Create the GitHub Release `v<version>` from the tag, its notes listing the skills added or changed.
+3. Create the GitHub Release `v<version>` from the tag, its notes listing the skills added or changed.
+
+A release runs no tests and needs no test deployment: the tests run on every change before it merges.
 
 ## The rFabric agent
 
