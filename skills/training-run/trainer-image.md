@@ -12,7 +12,7 @@ A trainer image is any container image that contains the training command, pinne
 | Trainer image | the user's training code and its framework | the user |
 | Trainer library `rfabric-trainer` (Python module `rfabric_trainer`) | run config, datasets, progress and metrics, checkpoint requests, outputs | rFabric; the user's build installs it into the trainer image. Optional: a training command may speak the trainer protocol itself |
 
-The trainer container gets no credentials, no worker token and no access to the cloud metadata endpoint; it has internet access. Data, sim assets and base weights reach it at launch: none of them belongs in the image. In a multi-node run every node pulls the trainer image itself, and the nodes share the worker's network.
+The trainer container gets no credentials, no worker token and no access to the cloud metadata endpoint; it has internet access. Data, sim assets and base weights reach it at launch, read-only: none of them belongs in the image. The directories the trainer writes to (checkpoint, output and cache) belong to the user the trainer container runs as, the image's `USER`. In a multi-node run every node pulls the trainer image itself, and the nodes share the worker's network.
 
 ## Check the trainer against the library
 
@@ -102,6 +102,7 @@ Then I: create the training configuration with it and preview a launch, which ch
 Notes for filling it in:
 
 - The first element of the LaunchTemplate's `command` is the program the trainer container starts, the rest are its arguments, so the command must match the `COPY` line: `["python", "/opt/trainer/train.py"]` for this Dockerfile.
+- The image's `USER` must name a user and group the image defines, as the `useradd` line does here: otherwise the run fails as `invalid` with code `image_user_not_found`.
 - A trainer without the library: leave out the second `RUN` step, the token in "Who" and the `--secret` line.
 - A GPU pool needs the GPU build of the framework (for PyTorch, its CUDA wheels); a CPU pool the CPU build.
 - `--platform`: build for the pool's machines. An image without a variant for their platform is refused at the launch with `image_platform_mismatch`.
