@@ -7,7 +7,7 @@ Before the grant, have ready:
 - the region (an AWS region such as `eu-west-2`); a grant covers one region;
 - a verified storage connection to an S3 bucket in the same account, with write access (`storage-connection`, the hand-built role with `s3:PutObject`): the target keeps task inputs, outputs, checkpoints and logs there, and rFabric signs the workers' transfers with that connection's grant;
 - a VPC in that region with private subnets that reach the internet through a NAT gateway: the stack asks for them and creates no network of its own;
-- to run rFabric's own images on these machines (rFabric's enrichment methods): pull access to the rFabric images for this AWS account. rFabric grants it; ask your rFabric contact before you start. The user's own trainer or enrichment image in this account's ECR needs nothing more.
+- pull access to rFabric's handler images for this AWS account: every job starts one, and the account may pull them only after rFabric grants it, an rFabric operator step at onboarding. Send your rFabric contact the 12-digit AWS account ID before you start; until the grant, jobs fail at the image pull. Running rFabric's own enrichment methods on these machines needs a second grant of the same kind: ask for it too.
 
 ## Your turn: create the compute stack
 
@@ -15,7 +15,7 @@ Before the grant, have ready:
 Your turn - AWS console, one page with a few choices
 Who: someone who may create CloudFormation stacks with IAM roles, AWS Batch and EC2 resources in the account (an AWS administrator).
      If that is not you, forward this whole block: it holds no secret.
-Why: rFabric runs your training and enrichment jobs on AWS Batch in your account. You keep the machines and the bill; rFabric holds no key.
+Why: rFabric runs your training, simulation and enrichment jobs on AWS Batch in your account. You keep the machines and the bill; rFabric holds no key.
 
 1. Sign in to the AWS account, then open: <aws.quickCreateUrl>
    The page "Quick create stack" opens in region <region> with the stack name rFabric-Compute-<region>.
@@ -31,7 +31,8 @@ Creates, all in your account:
 - one IAM role, <aws.roleName>, that only rFabric's AWS account <aws.rfabricAccountId> can assume, and only with the External ID <externalId>.
   It can submit, describe and stop jobs on the Batch resources of this stack, read service quotas and read the worker log group. It cannot read your data.
 - AWS Batch compute environments (Spot and on-demand), job queues and job definitions for the instance types you chose. Idle capacity scales to zero.
-- a worker role limited to the bucket prefix, a security group with HTTPS-only egress, and a log group for worker logs (kept 30 days).
+  The job definitions mount the host Docker socket: training and simulation run your trainer, simulator and candidate images as separate containers on the machine.
+- a worker role limited to the bucket prefix, with no registry permission, a security group with HTTPS-only egress, and a log group for worker logs (kept 30 days).
 Cost: you pay AWS for the instances while jobs run. Nothing runs while no rFabric task is waiting.
 Undo: delete the stack rFabric-Compute-<region> (CloudFormation, region <region>). Running jobs stop; the role, queues and capacity are removed.
 
@@ -71,7 +72,9 @@ Register (`provider-credentials.create`, needs `compute:administer`):
 
 ## Discover and connect
 
-`provider-credentials.compute-resources` with `query` `{"region": "<region>"}`. On AWS each pool's `key` is its job queue ARN, `backend` is `aws_batch`, and the proposed `taskTypes` follow the pool class: GPU queues are proposed for training, CPU queues for enrichment and generation. Simulation attempts are not proposed on a connected AWS pool: they run on rFabric's managed simulation pools.
+`provider-credentials.compute-resources` with `query` `{"region": "<region>"}`. On AWS each pool's `key` is its job queue ARN, `backend` is `aws_batch`, and the proposed `taskTypes` follow the pool class: GPU queues are proposed for training and simulation attempts, CPU queues for enrichment and generation.
+
+Training and simulation need the host Docker socket, so a GPU queue is proposed for them only when its job definitions mount it, which the connected stack (the CloudFormation template above, or rFabric's OpenTofu module) provides. A stack without the mount is offered neither, and `compute-targets.connect` refuses such a pool for them (422; the message names the pool). The stack must be updated: the user updates the stack rFabric-Compute-<region> with the current template, whose address is the `templateURL` parameter of `aws.quickCreateUrl`; then call `provider-credentials.compute-resources` again.
 
 `compute-targets.connect`:
 
@@ -112,4 +115,5 @@ A failing check after a stack change: the user updates the stack, then `compute-
 
 ## Images on this target
 
-The stack lets workers pull every repository of this account's own ECR, so the user's trainer or enrichment image belongs there, referenced by digest.
+- A trainer, simulator or candidate image is pulled by the worker with a short-lived registry sign-in rFabric issues for that one run, as on rFabric's pools: an image in Amazon ECR, this account's own included, or in Google Artifact Registry needs that account or project connected as a container registry; an image on any other registry host must be publicly readable (`compute-setup`, Container registry access).
+- An enrichment method's image is the image the machine itself starts: the stack lets the machines pull every repository of this account's own ECR, so it belongs there, referenced by digest.

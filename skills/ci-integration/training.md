@@ -20,7 +20,7 @@ The rFabric app does steps 4 and 5 in one flow: Integrations > CI/CD > the CI pr
 
 ## Decisions
 
-**When a pipeline trains.** Each option is a ready pipeline file (a preset) in the `rfabric/cli` repository: `https://github.com/rfabric/cli/tree/main/presets/training-run/<github|gitlab|bitbucket>`. Each builds the trainer image, pushes it, passes it on by digest, and states `code-version` as the commit it built from. Recommend starting with the manual and tag presets: training costs GPU hours, so the first pipelines train when a person asks.
+**When a pipeline trains.** Each option is a ready pipeline file (a preset) in the `rfabric/cli` repository: `https://github.com/rfabric/cli/tree/main/presets/training-run/<github|gitlab|bitbucket>`. Each builds the trainer image from the repository's own Dockerfile, pushes it, passes it on by digest, and states `code-version` as the commit it built from. A trainer image is any container image that contains the training command; it is not built from an rFabric image (`training-run`, step 2). Recommend starting with the manual and tag presets: training costs GPU hours, so the first pipelines train when a person asks.
 
 | Preset | Trigger | Choose when | Consequence |
 | --- | --- | --- | --- |
@@ -89,7 +89,7 @@ A pipeline file is edited by whoever can push to the repository. These limits ho
 | Template guardrails | the LaunchTemplate: `allowedOverrideKeys`, `maxRuntimeS`, `maxGpuHours`, `maxGpuCount`, `requiredTags` | an override outside them is refused, every run stops at its cap |
 | Monthly GPU quota | the workspace (`workspaces.compute-quota-usage`: `gpuHoursPerMonth`, `hardStop`) | with `hardStop` a launch past the quota is refused with `quota_exceeded` |
 | One run per retried step | the CLI keys each launch by the pipeline run and the launch request (a pipeline can pass its own `--idempotency-key`, which keys only the launch, never its cancels) | a retried step returns the run already launched; a re-run of the pipeline (a new attempt) launches a new one |
-| Trainer image check | rFabric's managed pools | a run whose image the pool cannot read is refused at the launch, before any compute is spent |
+| Trainer image check | rFabric's pools and connected pools | a run whose image rFabric cannot read through the container registry, or whose image is built for another platform than the pool's machines, is refused at the launch, before any compute is spent |
 
 ## Steps
 
@@ -111,13 +111,13 @@ The pipeline passes the image it built as `image`, which overrides the template'
 
 ### 3. Make the trainer image pullable
 
-The pool that runs the template must pull the image from where the pipeline pushes it. The presets push to the CI provider's registry (GitHub Container Registry, GitLab's project registry, Docker Hub on Bitbucket), which rFabric's managed pools read only when the image is public.
+The pool that runs the template must pull the image from where the pipeline pushes it. The presets push to the CI provider's registry (GitHub Container Registry, GitLab's project registry, Docker Hub on Bitbucket). On rFabric's pools and connected pools an image in Amazon ECR or Google Artifact Registry is pulled through the container registry connected to the launching workspace or its organization; an image on any other registry host, the CI providers' registries included, must be publicly readable.
 
 | Option | Choose when | Consequence |
 | --- | --- | --- |
-| Public repository | the trainer code may be public | nothing to connect; on GitHub the user makes the package public once (`github-actions.md`, The first run) |
-| Private repository in Google Artifact Registry, on a managed Google Cloud pool | the trainer code must stay private and the deployment offers it (`compute-setup`, Container registry access, step 5) | two grants on the user's side: the container registry of the workspace (rFabric checks the image) and a pull grant on the repository to rFabric's pull identity (the machines pull it). The pipeline then signs in to that registry instead of the CI provider's. Not offered for Amazon ECR on managed AWS pools yet |
-| A pool in the user's own cloud account | the trainer code must stay private on AWS, or the user trains there anyway | the image goes into that account's registry (`training-run`, step 2) |
+| Public repository in the CI provider's registry (the presets) | the trainer code may be public | nothing to connect; on GitHub the user makes the package public once (`github-actions.md`, The first run) |
+| Private repository in Amazon ECR or Google Artifact Registry | the trainer code must stay private | connect that account or project as a container registry the workspace can use (`compute-setup`, Container registry access): the only step, and the registry's cloud and the pool's cloud do not need to match. The pipeline then signs in to that registry instead of the CI provider's |
+| A self-hosted pool | the user trains on machines they run | rFabric issues no registry sign-in there: the host's own `docker login` decides what it can pull, private repositories of the CI provider's registry included |
 
 ### 4. Create the two credentials
 
@@ -151,10 +151,12 @@ Fetch the chosen preset for the user's CI system, fill in every line marked `ADA
 | TRAINING_PULL_REQUEST_CLIENT_ID | both pull request presets | client id of the pull request credential |
 | TRAINING_PULL_REQUEST_WORKSPACE_ID, TRAINING_PULL_REQUEST_EXPERIMENT_ID, TRAINING_PULL_REQUEST_DATASET_VERSIONS | both pull request presets | the pull request workspace, its Experiment and its small DatasetVersion |
 | TRAINING_BITBUCKET_TOKEN | Bitbucket pull request presets, optional | an access token with pull request write access, for the pull request comment; Secured |
+| RFABRIC_TRAINER_TOKEN | every preset; only when the trainer image installs `rfabric-trainer` | a GitHub token with read access to `rfabric/rfabric-trainer`: a repository secret on GitHub, a masked CI/CD variable on GitLab, a Secured repository variable on Bitbucket |
 
 On GitLab, a project CI/CD variable named like a job variable of the training template (`RFABRIC_` plus an input name in upper snake case, such as `RFABRIC_EXPERIMENT`) overrides the value the template maps from that input, a value typed into the Run pipeline form included. That is why the presets name their variables `TRAINING_*` and pass each to its input; keep those names. Define every variable a GitLab preset passes in every pipeline that runs it: GitLab passes an unset variable as its own text.
 
 - **Approval before GPU spend**: on GitHub the GPU presets run the launch in the environment `gpu-training`. The user creates it under Settings > Environments and adds required reviewers; without reviewers the launch runs unapproved. GitLab and Bitbucket presets leave approval to protected environments and deployment approvals where the plan has them.
+- **Trainer library**: every preset's image build passes the BuildKit secret `github_token` from RFABRIC_TRAINER_TOKEN, which a Dockerfile that installs `rfabric-trainer` reads with `RUN --mount=type=secret,id=github_token`. GitHub: `secrets: github_token=${{ secrets.RFABRIC_TRAINER_TOKEN }}` on the build action. GitLab and Bitbucket: `printf '%s' "$RFABRIC_TRAINER_TOKEN" > /tmp/github_token`, then `--secret id=github_token,src=/tmp/github_token` on the build line; the file stays outside the build context, so no `COPY` can put it in a layer, and the Bitbucket presets set `DOCKER_BUILDKIT=1`. rFabric grants the read access to `rfabric/rfabric-trainer`; ask your rFabric contact before you start. The token exists only during the build, never reaches a layer or rFabric, and is separate from the rFabric sign-in. On GitLab no input of the training template has that name, so it overrides nothing. A trainer image that does not install the library builds with the variable unset.
 - **Entry points**, if the user writes their own file: GitHub `uses: rfabric/cli/training-run@v0.1`; GitLab `include` of `https://raw.githubusercontent.com/rfabric/cli/v0.1/templates/training-run.yml` (job `rfabric-training-run`); Bitbucket the pipe `docker://ghcr.io/rfabric/cli:0.1` with `RFABRIC_LAUNCH_TEMPLATE` set (that variable selects training). Inputs: `launch-template`, `experiment`, `dataset-versions`, `base-model`, `config-overrides`, `compute-overrides`, `run-tags` (the run's tags `key=value`), `image`, `code-version`, `dir`, `base-branch`, `wait`, `wait-timeout`, `replace-previous`, and the sign-in inputs of `SKILL.md`; on Bitbucket `RFABRIC_` plus the name in upper snake case (`RFABRIC_RUN_TAGS`). The simulation wrapper's `tags` selects suites and is not a training input.
 - **`dir`**: the repository's launch template files. A pull request previews them (problems fail the step, nothing launches); a base-branch push applies them first, writing `image` and `code-version` into the template `launch-template` names.
 - **`replace-previous`**: cancels the runs this repository launched earlier from the same ref and template, so a pull request keeps one run.
@@ -191,7 +193,7 @@ Without `wait` the pipeline is done once the run is launched. To act on the outc
 | Exit 3, `requiredTags: Missing required tags` | the template requires tags the pipeline does not pass | add them to the input `run-tags` (Bitbucket `RFABRIC_RUN_TAGS`) |
 | Exit 2, unknown launch template, the message lists `slug (id)` pairs | the slug is not in the credential's workspace | use a listed slug; a pull request credential sees only its own workspace |
 | Exit 2 naming `code-version` | `code-version` without `image` | pass both, or neither |
-| `container_registry_not_connected`, `image_access_denied`, `image_not_found`, `image_platform_mismatch` (422) | the pool cannot read the trainer image, or it is built for other machines; the message names the image and the pool | step 3; build for the platform the message names |
+| `container_registry_not_connected`, `image_access_denied`, `image_not_found`, `image_platform_mismatch` (422) | on rFabric's pools and connected pools rFabric cannot read the trainer image through the container registry, or it is built for another platform than the pool's machines; the message names the image and the pool | step 3; build for the platform the message names |
 | `quota_exceeded`, `budget_exceeded` (422) | the workspace's monthly GPU quota, or the template's `maxGpuHours` | `training-run` Problems |
 | 403 `Missing grant training:configure` | a pull request credential applying `dir` | only base-branch runs apply; check which client id the run used |
 | `kind_not_requested` in a `dir` problem | the directory holds evaluation definition files | point `dir` at the launch template directory; evaluation files go to the simulation wrapper |

@@ -1,6 +1,6 @@
 # Container registry: the grant on the cloud side
 
-Read this for steps 3 to 5 of "Container registry access" in `compute-setup`. It connects an Amazon ECR account or a Google Artifact Registry project so rFabric's managed pools can use the user's private simulation images, and, on managed Google Cloud pools where the deployment offers it, private trainer images. Values in `<angle brackets>` come from `provider-credentials.setup-token` with `query` `{"cloud": "aws" | "gcp", "purpose": "container_registry"}` (no `region`) unless a line says otherwise. It changes nothing. Call it once and show `externalId` to the user with the block: rFabric keeps none until the credential is registered.
+Read this for steps 3 and 4 of "Container registry access" in `compute-setup`. It connects an Amazon ECR account or a Google Artifact Registry project so training and simulation runs on rFabric's pools and on connected pools pull the user's trainer, candidate and simulator images straight from it. Connecting it is the only step, for simulation and for training. Values in `<angle brackets>` come from `provider-credentials.setup-token` with `query` `{"cloud": "aws" | "gcp", "purpose": "container_registry"}` (no `region`) unless a line says otherwise. It changes nothing. Call it once and show `externalId` to the user with the block: rFabric keeps none until the credential is registered.
 
 One connected registry serves one AWS account or one Google Cloud project. An organization can hold several.
 
@@ -10,7 +10,7 @@ One connected registry serves one AWS account or one Google Cloud project. An or
 Your turn - AWS console, one page
 Who: someone who may create CloudFormation stacks and IAM roles in the AWS account that holds the ECR repositories.
      If that is not you, forward this whole block: it holds no secret.
-Why: rFabric checks your images before a launch and lets the machine that runs them pull them, through a role in your account. No key leaves AWS and no image is copied.
+Why: rFabric reads your trainer and simulation images before a launch and signs the worker that runs them in to pull them, through a role in your account. No key leaves AWS and no image is copied.
 
 1. Sign in to the AWS account that holds the images, then open: <aws.quickCreateUrl>
    The page "Quick create stack" opens in region us-east-1 with a stack name starting rFabric-Container-Registry-.
@@ -61,7 +61,7 @@ With a shell where the user's `gcloud` is signed in, save the script and run it 
 Your turn - Google Cloud Shell in the project that holds the images
 Who: a project Owner, or someone who may enable APIs, create workload identity pools and service accounts, and change the project's IAM policy.
      If that is not you, forward this whole block and the script: they hold no secret.
-Why: rFabric checks your images before a launch and lets the machine that runs them pull them, as a service account of your project. No key file, and no image is copied.
+Why: rFabric reads your trainer and simulation images before a launch and signs the worker that runs them in to pull them, as a service account of your project. No key file, and no image is copied.
 
 1. Open Cloud Shell in the Google Cloud console.
 2. Save the script I give you as rfabric-registry.sh and run: bash rfabric-registry.sh
@@ -109,41 +109,18 @@ Register (`provider-credentials.create`):
 }
 ```
 
-## Trainer images
-
-Step 5 of "Container registry access", Google Cloud only. A simulation machine gets a short-lived sign-in from the container registry; a training machine of rFabric's managed Google Cloud pools pulls as rFabric's own pull identity instead, which the repository must let read. The container registry above is still needed: through it rFabric checks the trainer image before a run starts. Do this once per repository that holds trainer images. The value is `gcp.imagePullMember` of the `provider-credentials.setup-token` answer with `cloud` `gcp`. When it is null, stop: this deployment does not offer private trainer images on its managed pools yet.
-
-Private trainer images in Amazon ECR are not offered on rFabric's managed AWS pools yet: AWS has no rFabric pull identity a repository could grant, so `provider-credentials.setup-token` names none for AWS. A trainer image for those pools is public, in rFabric's own registry, or runs on a pool in the user's own AWS account (`connected-aws.md`).
-
-```text
-Your turn - a terminal with gcloud, signed in to the project of the trainer image
-Who: someone who may change the repository's IAM policy (an Artifact Registry admin or project owner).
-Why: rFabric's training machines pull your trainer image as rFabric's pull identity; the repository must allow it to read.
-
-1. Run:
-   gcloud artifacts repositories add-iam-policy-binding <repository> \
-     --project=<project id> --location=<location> \
-     --member=<gcp.imagePullMember> \
-     --role=roles/artifactregistry.reader
-
-Lets rFabric: read images of this repository. It cannot push or delete.
-Undo: the same command with remove-iam-policy-binding.
-Bring back: tell me when it ran.
-Then I: preview a launch on the image.
-```
-
-With a shell where the user's `gcloud` is signed in, run the command yourself after the user approves, as for the script above. Where the deployment offers it, the rFabric app shows the same command after a Google Cloud container registry is connected, in the Grant step.
-
 ## Both clouds
 
 - **Probe result**: poll every 3 seconds, up to 90 seconds. `assumed` `true` with `discovery.pullImages` `true` is the goal. `pullImages` `false` means the grant works but may not pull: on AWS the role lacks `ecr:GetAuthorizationToken`, on Google Cloud the service account lacks read access to Artifact Registry on the project. Have the user repeat the stack or script before you register. One exception: on Google Cloud, read access bound on single repositories only (the "grant less" line) also reports `false`; register it, and the image check at the launch is the proof.
 - **A later session, or `invalid_external_id`**: on AWS ask the user for the value of "External ID" on the stack's Parameters tab, then probe and register with it as `externalId`. On Google Cloud call `provider-credentials.setup-token` again and have the user run that script: it reuses the pool and the service account and adds one provider.
 - **Scope**: `ownerScope` `workspace` with `workspaceId` (instead of `organizationId`) limits the registry to one workspace. Creating needs organization role `owner` or `admin` for that scope; anyone else gets 403.
 - **Matching**: rFabric picks the registry from the image address: an image at `<account>.dkr.ecr.<region>.amazonaws.com/...` uses the active AWS registry whose role is in that account; one at `<location>-docker.pkg.dev/<project>/...` uses the active Google Cloud registry of that project. The workspace's own registry is preferred, then the newest.
-- **Remove**: `provider-credentials.delete`. Nothing depends on a container registry, so it is never refused; launches of images from that account then fail the image check. Then the undo line above.
+- **Remove**: `provider-credentials.delete`. Nothing depends on a container registry, so it is never refused. Before every run, also when the image is already on the machine, rFabric checks that the container registry can still read the exact image: a revoked or narrowed container registry refuses new launches of images from that account or project and stops the next run of one already launched. Then the undo line above.
 
 | Signal at a launch | What it means | Do |
 | --- | --- | --- |
-| 422 `container_registry_not_connected` | the image's AWS account or Google Cloud project has no container registry the workspace can use | connect it (this file), in a scope that covers the workspace |
-| 422 `image_access_denied` | the registry, or the grant of its container registry, refused rFabric read access to the image | check the repository pattern (AWS) or the reader binding (Google Cloud) covers that repository |
+| 422 `container_registry_not_connected` | no connected container registry of the workspace or its organization serves the image's AWS account or Google Cloud project | connect it (this file), in a scope that covers the workspace |
+| 422 `image_access_denied` | the registry refuses the read | check the repository pattern (AWS) or the reader binding (Google Cloud) covers that repository |
+| 422 `image_not_found`, `image_platform_mismatch` | the registry holds no such image, or the image is built for another platform than the pool's machines | push the image and use its digest; rebuild for the platform the message names |
+| 502 `UPSTREAM_ERROR` | the image check could not complete | launch again: it is retryable |
 | 422 `image_not_pinned` | the image is referenced by tag | reference it as `<repository>@sha256:<64 hex>` |

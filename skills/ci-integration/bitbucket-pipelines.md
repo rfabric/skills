@@ -103,14 +103,14 @@ Adapt before handing over:
 | Definition directory | replace `RFABRIC_SUITE: <slug>` with `RFABRIC_DIR: <directory>` |
 | One launch-only credential | delete the `RFABRIC_PULL_REQUEST_CLIENT_ID` line and variable |
 | Fixed artifact, no image build | delete the Build step; replace `RFABRIC_IMAGE` with `RFABRIC_CANDIDATE: <artifact id>` |
-| The image build reads the BuildKit secret `github_token` (a Dockerfile with `--mount=type=secret,id=github_token`, as the starter controller has) | before `docker login` add `printf '%s' "$RFABRIC_SIMULATOR_TOKEN" > github_token`, and add `--secret id=github_token,src=github_token` to the build line; the user stores the GitHub token their local build passes as that secret as a Secured repository variable RFABRIC_SIMULATOR_TOKEN. It is used by the image build only and never reaches rFabric |
+| The image build reads the BuildKit secret `github_token` (a Dockerfile with `--mount=type=secret,id=github_token`, as the starter controller has) | before `docker login` add `printf '%s' "$RFABRIC_SIMULATOR_TOKEN" > /tmp/github_token`, and add `--secret id=github_token,src=/tmp/github_token` to the build line: the file stays outside the build context, so no `COPY` can put it in a layer. The user stores the GitHub token their local build passes as that secret as a Secured repository variable RFABRIC_SIMULATOR_TOKEN. It is used by the image build only and never reaches rFabric |
 | Client secret credential | add the pipe variable `RFABRIC_CLIENT_SECRET: $RFABRIC_CLIENT_SECRET` and store the secret as a Secured repository variable; `oidc:` is then not needed |
 | Longer suites | set `RFABRIC_WALL_DEADLINE` (seconds) and raise `max-time` (minutes) to cover it plus 300 seconds |
 | Pin an exact wrapper release | `ghcr.io/rfabric/cli:<full version>` instead of the floating `0.1` |
 
 Pipe variables are the wrapper's inputs as `RFABRIC_` plus the name in upper snake case: `client-id` is `RFABRIC_CLIENT_ID`.
 
-The image must be pullable by the suite's pool: a public repository, or a private one in Amazon ECR or Google Artifact Registry connected to rFabric (`compute-setup`, Container registry access). A private Docker Hub repository is not.
+The image must be pullable by the suite's pool. On rFabric's pools and connected pools: a publicly readable repository, or one in Amazon ECR or Google Artifact Registry connected as a container registry (`compute-setup`, Container registry access). A private Docker Hub repository is not.
 
 ## What the user sees
 

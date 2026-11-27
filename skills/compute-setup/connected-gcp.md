@@ -6,7 +6,8 @@ Before the grant, have ready:
 
 - the region (a Google Cloud region such as `europe-west4`); a grant covers one region;
 - the project id;
-- a verified storage connection to a bucket of the same project, with write access (`storage-connection`): the target keeps task inputs, outputs, checkpoints and logs there, and rFabric signs the workers' transfers with that connection's grant. The compute script grants no bucket access of its own.
+- a verified storage connection to a bucket of the same project, with write access (`storage-connection`): the target keeps task inputs, outputs, checkpoints and logs there, and rFabric signs the workers' transfers with that connection's grant. The compute script grants no bucket access of its own;
+- pull access to rFabric's handler images for the project's worker service account: every job starts one. rFabric serves Google Cloud targets the handler images from its own Artifact Registry repository and grants that service account read access there, an rFabric operator step at onboarding. Tell your rFabric contact the project id before you start; the account is rfabric-worker@<project id>.iam.gserviceaccount.com, which the script creates. Until the grant, jobs fail at the image pull.
 
 ## Run the compute script
 
@@ -18,7 +19,7 @@ With a shell where the user's `gcloud` is signed in, save the script and run it 
 Your turn - Google Cloud Shell in the project the machines should run in
 Who: a project Owner, or someone who may enable APIs, create workload identity pools, service accounts, custom roles, networks and firewall rules, and change the project's IAM policy.
      If that is not you, forward this whole block and the script: they hold no secret.
-Why: rFabric runs your training and enrichment jobs as Batch jobs in your project. You keep the machines and the bill; rFabric holds no key.
+Why: rFabric runs your training, simulation and enrichment jobs as Batch jobs in your project. You keep the machines and the bill; rFabric holds no key.
 
 1. Open Cloud Shell in the Google Cloud console.
 2. Save the script I give you as rfabric-compute.sh and run: bash rfabric-compute.sh
@@ -110,7 +111,9 @@ Omit a pool's `taskTypes`, `name` and `maxCapacity` to take what discovery propo
 
 ## Images on this target
 
-Machines run as the rfabric-worker service account. To let them pull the project's own Artifact Registry images (the user's trainer or enrichment image, referenced by digest), read access is granted once, by the rule of the script (you with a shell, after the user approves; the user otherwise):
+A trainer, simulator or candidate image is pulled by the worker with a short-lived registry sign-in rFabric issues for that one run, as on rFabric's pools: an image in Google Artifact Registry, this project's own included, or in Amazon ECR needs that project or account connected as a container registry; an image on any other registry host must be publicly readable (`compute-setup`, Container registry access). The worker service account needs no access to that registry.
+
+An enrichment method's image is the image the machine itself starts, as the rfabric-worker service account. To let it pull the project's own Artifact Registry images, referenced by digest, read access is granted once, by the rule of the script (you with a shell, after the user approves; the user otherwise):
 
 ```bash
 gcloud projects add-iam-policy-binding <project id> \

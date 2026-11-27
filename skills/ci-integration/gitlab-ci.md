@@ -95,7 +95,7 @@ Adapt before handing over:
 | Definition directory | replace `suite: <slug>` with `dir: <directory>` |
 | One launch-only credential | create only `RFABRIC_CLIENT_ID` |
 | Fixed artifact, no image build | delete the `build` job and the `build` stage; replace `image:` with `candidate: <artifact id>` |
-| The image build reads the BuildKit secret `github_token` (a Dockerfile with `--mount=type=secret,id=github_token`, as the starter controller has) | before `docker login` add `printf '%s' "$RFABRIC_SIMULATOR_TOKEN" > github_token`, and add `--secret id=github_token,src=github_token` to the build line; the user stores the GitHub token their local build passes as that secret as a CI/CD variable RFABRIC_SIMULATOR_TOKEN, Visibility "Masked". It is used by the image build only and never reaches rFabric |
+| The image build reads the BuildKit secret `github_token` (a Dockerfile with `--mount=type=secret,id=github_token`, as the starter controller has) | before `docker login` add `printf '%s' "$RFABRIC_SIMULATOR_TOKEN" > /tmp/github_token`, and add `--secret id=github_token,src=/tmp/github_token` to the build line: the file stays outside the build context, so no `COPY` can put it in a layer. The user stores the GitHub token their local build passes as that secret as a CI/CD variable RFABRIC_SIMULATOR_TOKEN, Visibility "Masked". It is used by the image build only and never reaches rFabric |
 | Client secret credential | add the input `client-secret: $RFABRIC_CLIENT_SECRET` and store the secret as a masked CI/CD variable; never write the secret into the file |
 | Longer suites | set the input `wall-deadline` and raise `timeout:` to cover it plus 300 seconds |
 | Pin an exact wrapper release | `/v<full version>/` in the `remote:` URL instead of the floating `v0.1` |
@@ -105,7 +105,7 @@ Two rules that are easy to get wrong:
 - Do not pass the input `pull-request-client-id: $RFABRIC_PULL_REQUEST_CLIENT_ID`. The project variable of that name reaches the job by itself; as an input, GitLab passes the literal text when the variable is unset.
 - The job's `timeout:` also bounds its identity token. With no timeout the token lives 5 minutes and a longer wait ends with exit code 1 while the evaluation job runs on.
 
-The image must be pullable by the suite's pool: the Container Registry of a private GitLab project is not. Push to a registry the pool can reach (`compute-setup`).
+The image must be pullable by the suite's pool. On rFabric's pools and connected pools the Container Registry of a private GitLab project is not: push to Amazon ECR or Google Artifact Registry connected as a container registry (`compute-setup`, Container registry access), or to a publicly readable repository.
 
 ## What the user sees
 

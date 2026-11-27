@@ -30,7 +30,7 @@ Without the CLI's register command, the agent does the registration through oper
 - **Permissions** (`introspect.whoami`): `artifact:build` for every build step (roles `owner`, `admin`, `operator`); `artifact:create` for releases, variants and artifact channels, and `artifact:publish`, `artifact:revoke` for those actions (`owner`, `admin`); `artifact:read` to list and diff (`owner`, `admin`, `operator`, `member`).
 - **Needs**:
   - a Model (`model-release`) that is `approved` or `deployed`; or `candidate` or `evaluated` when the workspace allows packaging before approval (step 1). An imported model must have finished copying its weights.
-  - a container registry the machines that run the image can pull from: `compute-setup` (Container registry access) has the rule per pool. For a simulation suite on rFabric's managed pools: a repository that allows pulls without sign-in, or a private repository in Amazon ECR or Google Artifact Registry connected as a container registry.
+  - a container registry the machines that run the image can pull from: `compute-setup` (Container registry access) has the rule per pool. For a simulation suite on rFabric's pools and connected pools: Amazon ECR or Google Artifact Registry connected as a container registry, or a publicly readable repository on any other registry host.
 - **Ask the user**:
 
 | Input | Why | How to find it or default |
