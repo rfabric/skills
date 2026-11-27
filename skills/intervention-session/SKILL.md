@@ -127,7 +127,7 @@ before the console lets you move.
 
 Another follower, such as `rfabric-yam-bridge` for i2rt YAM arms (home pose: `--home`, or `--left-home` and `--right-home`), goes into the same `/etc/rfabric/arms.env` in place of the LeRobot command.
 
-When the robot has an `embodiment` in rFabric (`robots.get`; `remote-inference` declares it), it must name the follower's arms and joints in the follower's order, or the robot refuses every session (`embodiment_fingerprint_mismatch`). Its `maxRate` per arm also caps how fast the console's joint targets and Home move the arm.
+When the robot has an `embodiment` in rFabric (`robots.get`; `remote-inference` declares it), it must name the follower's arms and joints in the follower's order, or the robot refuses every session (`embodiment_fingerprint_mismatch`). Its `maxRate` per arm also caps how fast the console's joint targets, joint jogs and Home move the arm. Such a robot does not offer gripper tip control (moving the gripper in space with the gamepad sticks or the gripper keys), because tip control would bypass `maxRate`: the operator drives each joint, and the gamepad's left stick drives the first two joints. A robot without an embodiment keeps tip control, with no limits.
 
 ### 3. Request the session
 

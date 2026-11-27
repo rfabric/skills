@@ -124,7 +124,7 @@ The numbers above show the shape only; take each from the user or the model:
 - `cameras`: names, size and rate as the model consumes them. The robot publishes at that size.
 - Do not send `size`, `names` or `width`: rFabric derives them (`embodiment_derived_field`).
 
-Tell the user: this embodiment also applies to every intervention on the robot, and its `maxRate` caps the operator's joint targets and Home.
+Tell the user: this embodiment also applies to every intervention on the robot, and its `maxRate` caps the operator's joint targets, joint jogs and Home. With an embodiment the robot does not offer gripper tip control (moving the gripper in space with the gamepad or the gripper keys), because tip control would bypass `maxRate`: operators drive each joint instead. A robot without an embodiment keeps tip control, with no limits.
 
 ### 4. Pick the Artifact
 

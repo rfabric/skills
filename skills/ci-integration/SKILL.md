@@ -82,7 +82,7 @@ Steps 2, 4 and 7 are written out per CI system. Read the one file for the user's
 | Trust (recommended) | GitHub Actions, GitLab CI, Bitbucket Pipelines, or another issuer whose tokens carry `repository_id`, `project_id` or `repositoryUuid` | nothing to store or rotate; only the named repository and refs can sign in |
 | Client secret | any other CI, or a self-managed CI that rFabric cannot reach over public https | a secret shown once, kept in the CI's secret store, rotated by hand |
 
-No repository yet: `rfabric eval init <name> --ci github|gitlab|bitbucket --adapter mujoco|gazebo|isaac-sim` writes a controller, a definition directory and the pipeline file. With a shell, run it yourself after the user approves; without one, hand it over as a "Your turn" block. Use that pipeline file in step 4 instead of the one in the CI system's file: it runs `dir`, so create two credentials. Its image build installs the rFabric candidate and simulator libraries and reads a GitHub token for them (the secret RFABRIC_SIMULATOR_TOKEN the file names; Needs). Then continue at step 2.
+No repository yet: `rfabric eval init <name> --ci github|gitlab|bitbucket --adapter mujoco|gazebo|isaac-sim` writes a controller, a definition directory and the pipeline file. With a shell, run it yourself after the user approves; without one, hand it over as a "Your turn" block. Use that pipeline file in step 4 instead of the one in the CI system's file: it runs `dir`, so create two credentials. Its image build installs the private rFabric Python packages (the candidate and simulator libraries) and reads a GitHub token for them (the secret RFABRIC_PACKAGES_TOKEN the file names; Needs). Then continue at step 2.
 
 ## Steps
 
