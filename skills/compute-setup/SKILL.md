@@ -36,7 +36,7 @@ The user often arrives with one need. Go straight to its section; each is usable
 
 | The user needs | Section |
 | --- | --- |
-| pools to pull a private image; a launch refused with `container_registry_not_connected` or `image_access_denied` | Container registry access (after the steps) |
+| pools to pull a private trainer or simulation image; a launch refused with `container_registry_not_connected` or `image_access_denied` | Container registry access (after the steps) |
 | to read or change the compute quota; work refused with `quota_exceeded` | Step 6, Set the compute quota |
 | a pool that may produce gating evidence; `pool_not_qualified` | Qualify a pool for gating evaluations |
 | to see why a task waits or failed, or its log | Step 7, Follow work |
@@ -46,7 +46,7 @@ The user often arrives with one need. Go straight to its section; each is usable
 ## Before you start
 
 - **Permissions**: reading needs `compute:read` (every member); targets, pools, workers, machines, compute credentials and the compute settings need `compute:administer` (built-in roles `operator`, `admin`, `owner`); recording and approving qualifications needs `compute:qualify` (`admin`, `owner`). `introspect.whoami` lists them under `permissions`. A container registry credential needs organization role `owner` or `admin` in the scope it is created for.
-- **Needs**: a workspace (`workspace-setup`). A connected target also needs a verified storage connection to a bucket in the same cloud account, with write access (`storage-connection`: the hand-built role on AWS, an object write role on Google Cloud), and on the cloud side a person who may create the stack or run the script: ask who that is before step 4.
+- **Needs**: a workspace (`workspace-setup`). A connected target also needs a verified storage connection to a bucket in the same cloud account, with write access (`storage-connection`: the hand-built role on AWS, an object write role on Google Cloud), and on the cloud side a person who may create the stack or run the script: ask who that is before step 4. Its machines start rFabric's handler images, which the user's cloud may pull only after rFabric grants that AWS account or Google Cloud worker service account access to them: an rFabric operator step at onboarding, so ask the rFabric contact before step 4 (the cloud file says what to send).
 - **Ask the user**:
 
 | Input | Why | How to find it or default |
@@ -62,7 +62,7 @@ The user often arrives with one need. Go straight to its section; each is usable
 | Option | Choose when | Consequence |
 | --- | --- | --- |
 | `managed` (recommended) | fastest start; no cloud account of their own needed | nothing to set up; usage counts against the workspace quota and is billed by rFabric |
-| `connected` | committed cloud spend or reserved GPUs; data must stay in their account | a cloud administrator creates a stack (AWS) or runs a script (Google Cloud) once per region; the user pays their cloud directly; rFabric holds no key and loses access when the grant is deleted. On AWS, simulation attempts still run on rFabric's managed pools |
+| `connected` | committed cloud spend or reserved GPUs; data must stay in their account | a cloud administrator creates a stack (AWS) or runs a script (Google Cloud) once per region; the user pays their cloud directly; rFabric holds no key and loses access when the grant is deleted. Nothing runs there until rFabric granted the handler image access (Needs) |
 
 **Scope of a new target.** `organization` (default): every workspace can use it. `workspace`: that workspace alone.
 
@@ -75,6 +75,14 @@ The user often arrives with one need. Go straight to its section; each is usable
 3. `workspaces.compute-quota-usage`: month-to-date `gpuSeconds` and `cpuSeconds` against `gpuHoursPerMonth` and `cpuHoursPerMonth`, and `hardStop`. Give hours, not seconds.
 
 The user's own pools run these task types, written as the API spells them: `"training.run"`, `"sim.attempt"`, `"simAssetBuild.step"`, `"enrichment.batch"`. Imports, conversions, exports and other platform work always run on rFabric's own pools and need no setup.
+
+Training and simulation need the host Docker socket: the machine starts rFabric's handler image, and its worker runs the user's image (trainer, candidate or simulator) as a separate container. Where they run:
+
+| Pools | Training and simulation |
+| --- | --- |
+| rFabric's AWS pools, connected Google Cloud pools, self-hosted pools, local Docker | run both |
+| connected AWS pools | run both only when the pool's job definitions mount the Docker socket, which the connected stack (CloudFormation template or OpenTofu module) provides. A stack without the mount is offered neither and must be updated (`connected-aws.md`, Discover and connect) |
+| Kubernetes, Cloud Run and Lambda pools (the pool's `backend`) | run neither |
 
 ### 2. Choose where work runs
 
@@ -142,20 +150,19 @@ Every piece of work is an Operation (`op_...`) with one or more tasks. From an O
 
 ## Container registry access
 
-Pools pull container images: the user's trainer, simulator, enrichment or candidate image. Images are referenced by digest (`<repository>@sha256:<64 hex>`). Where the user's image must be depends on the pool's target (`placement`, in `compute-targets.get`) and on the task type:
+Pools pull container images, referenced by digest (`<repository>@sha256:<64 hex>`). A training run and a simulation run execute the same way: the machine starts rFabric's handler image, then its worker pulls the user's image (trainer, candidate or simulator) and runs it as a separate container with no credentials, no worker token and no access to the cloud metadata endpoint. An enrichment method's image is the image the machine itself starts. Where the user's image must be depends on the pool's target (`placement`, in `compute-targets.get`) and on the task type:
 
 | Pool | Task | The image must be in |
 | --- | --- | --- |
-| rFabric's managed pools | simulation attempts (`"sim.attempt"`): the candidate and the simulator image | a repository that allows pulls without sign-in, or a private repository in an Amazon ECR account or Google Artifact Registry project connected as a **container registry** (below). A private image in any other registry cannot be pulled |
-| rFabric's managed pools | training (`"training.run"`): the trainer image | a repository that allows pulls without sign-in, or rFabric's own registry. A private repository of the user is not offered on managed pools in AWS (the target's `provider` `aws` in `compute-targets.get`): AWS has no rFabric pull identity to grant. On managed pools in Google Cloud, a private Google Artifact Registry repository works only where the deployment offers it (step 5) |
-| rFabric's managed pools | every other task type (enrichment) | a repository that allows pulls without sign-in. A container registry does not help here |
-| pools of a connected AWS target | training, enrichment (simulation attempts stay on rFabric's managed pools) | a repository in that account's own Amazon ECR (the compute stack grants the pull) |
-| pools of a connected Google Cloud target | every task type its pools list | that project's Artifact Registry, once the worker service account may read it: one command, in `connected-gcp.md` under "Images on this target" |
-| pools of a `self_hosted` target | every task type its pools list | any registry Docker on that host can pull from: the user runs `docker login <registry>` once as the user the worker runs as |
+| rFabric's pools and connected pools (the user's AWS account or Google Cloud project) | training (`"training.run"`): the trainer image. Simulation attempts (`"sim.attempt"`): the candidate and the simulator image. Remote inference sources (`"inference.serve"`): the Artifact's inference server image, run the same way as a separate container through the host Docker socket | an Amazon ECR account or Google Artifact Registry project connected as a **container registry** (below) to the launching workspace or its organization. The registry's cloud and the pool's cloud do not need to match. An image on any other registry host must be publicly readable |
+| rFabric's pools | enrichment: the method's image | a repository that allows pulls without sign-in. A container registry does not help here |
+| connected AWS pools | enrichment: the method's image | a repository in that account's own Amazon ECR (the compute stack grants the pull) |
+| connected Google Cloud pools | enrichment: the method's image | that project's Artifact Registry, once the worker service account may read it: one command, in `connected-gcp.md` under "Images on this target" |
+| self-hosted pools and local Docker | every task type its pools list | any registry Docker on that host can pull from. rFabric issues no registry sign-in there: the host's own `docker login` decides what it can pull, so the user runs `docker login <registry>` once as the user the worker runs as |
 
-An image that must stay private and is neither a simulation image nor a trainer image on a managed Google Cloud pool that offers the grant (an enrichment method; a trainer on managed AWS pools): run it on a pool in a connected account.
+An enrichment method's image that must stay private: run it on a connected pool.
 
-A container registry is a ProviderCredential with `purpose` `container_registry`: a keyless grant (`authMethod` `assumeRole` on AWS, `workloadIdentity` on Google Cloud) through which rFabric checks the images of a simulation launch and the trainer image of a training run before they start, and hands a simulation machine a short-lived sign-in to pull them. Images are never copied out of the user's registry; the grant cannot push or delete.
+A container registry is a ProviderCredential with `purpose` `container_registry`: a keyless grant (`authMethod` `assumeRole` on AWS, `workloadIdentity` on Google Cloud) to the user's Amazon ECR account or Google Artifact Registry project. Through it rFabric reads the trainer image of a training launch and the images of a simulation launch before they start, and issues the worker a short-lived registry sign-in for that one run, so the image is pulled straight from the user's registry. Nothing is copied into an rFabric registry; the grant cannot push or delete. Connecting the container registry is the only step, for simulation and for training. Before every run, also when the image is already on the machine, rFabric checks that the container registry can still read the exact image: a revoked or narrowed container registry stops the next run.
 
 | # | Step | Who | Operations |
 | --- | --- | --- | --- |
@@ -163,15 +170,13 @@ A container registry is a ProviderCredential with `purpose` `container_registry`
 | 2 | Choose the scope | user decides | none |
 | 3 | Grant read access to the images | AWS stack: user or their cloud administrator. Google Cloud script: agent with a shell; otherwise user or their cloud administrator | `provider-credentials.setup-token` |
 | 4 | Check the grant and register it | agent | `provider-credentials.probe-grant`, `provider-credentials.create` |
-| 5 | Google Cloud trainer images only, where offered: let rFabric's machines pull the repository | user or their cloud administrator | `provider-credentials.setup-token` |
 
 1. `workspaces-provider-credentials.list`: rows with `purpose` `container_registry`. rFabric matches an image to a registry by its address: the AWS account in an ECR host, the project in an Artifact Registry path. An `active` row for that account (in `principal`) or project (`providerConfig.projectId`) already covers the image: stop and say so. A workspace's own registry wins over the organization's.
 2. Decide the scope with the user: `organization` (every workspace) or `workspace`. Creating it needs organization role `owner` or `admin` for that scope.
 3. Read `container-registry.md` in this skill's directory for the "Your turn" block and the bodies: `provider-credentials.setup-token` with `purpose` `container_registry` (no `region`), then the stack or the script. It creates one read-only role (AWS) or service account (Google Cloud) in their account, and nothing in rFabric yet.
 4. `provider-credentials.probe-grant` until `assumed` is `true` and `discovery.pullImages` is `true`, then `provider-credentials.create`.
-5. A private trainer image on rFabric's managed Google Cloud pools also needs the repository to grant read access to rFabric's pull identity, which `provider-credentials.setup-token` (`cloud` `gcp`, `purpose` `container_registry`) names as `gcp.imagePullMember`. When it is null, this deployment does not offer it yet: use a public repository or a pool in a connected account. `container-registry.md`, section "Trainer images", has the block. On managed AWS pools there is no such grant: rFabric does not pull private Amazon ECR trainer images there.
 
-Done when: `provider-credentials.get` shows the credential `active` with `purpose` `container_registry`, and the probe reported `pullImages` `true`. For a Google Cloud trainer image also: the user confirmed the repository grant of step 5. The launch preview's `trainerImage` check (`training-run`, step 4) proves rFabric can read the image; only the first run reaching `running` proves the machines can pull it.
+Done when: `provider-credentials.get` shows the credential `active` with `purpose` `container_registry`, and the probe reported `pullImages` `true`. The launch preview's `trainerImage` check (`training-run`, step 4) and a suite's preflight (`simulation-suite`) then read the image through it and compare its platform with the pool's machines; on self-hosted and local Docker pools both are `not_checked`.
 
 ## Qualify a pool for gating evaluations
 
@@ -219,11 +224,14 @@ The rotated credential is a secret shown once: say before the call that it will 
 | 400 `credential_purpose_mismatch` | the credential is not a `compute` credential of that cloud | register one (step 4) |
 | 403 `permission_denied` (`details`: `resource` `compute`, `action`) | the user lacks that `compute` action | name the permission; `member-access` finds why it is missing and what can add it |
 | 409 `qualification_self_approval` | the recorder tried to approve | a second person approves |
-| task `claimable` for long, machines `failed` or none | capacity does not start: the cloud quota for the instance type, a Spot shortage, a worker that cannot reach rFabric | `compute-machines.list` for the pool, relay `state` and `providerState`; on a connected account the user checks their cloud quota |
-| 422 `container_registry_not_connected` at a launch | the image's AWS account or Google Cloud project has no container registry the workspace can use | Container registry access: connect it in a scope that covers the workspace |
-| 422 `image_access_denied` at a launch | the registry, or the grant of its container registry, refused rFabric read access to the image | the message names the image and the cause; `container-registry.md` has the fix per cloud. A private image in any other registry cannot be pulled by rFabric's managed pools: move it to Amazon ECR or Google Artifact Registry, or make it public |
+| task `claimable` for long, machines `failed` or none | capacity does not start: the cloud quota for the instance type, a Spot shortage, a worker that cannot reach rFabric, or, on a connected target, a machine that cannot pull rFabric's handler image because rFabric has not granted the account access yet | `compute-machines.list` for the pool, relay `state` and `providerState`; on a connected account the user checks their cloud quota and asks the rFabric contact about the handler image access (Needs) |
+| 422 `container_registry_not_connected` at a launch | no connected container registry of the workspace or its organization serves the image's AWS account or Google Cloud project | Container registry access: connect it in a scope that covers the workspace |
+| 422 `image_access_denied` at a launch | the registry refuses the read: the grant of its container registry does not cover the image, or an image on another registry host is not publicly readable | the message names the image and the cause; `container-registry.md` has the fix per cloud. On rFabric's pools and connected pools a private image on any other registry host cannot be pulled: move it to Amazon ECR or Google Artifact Registry, or make it public |
+| 422 `image_not_found`, `image_platform_mismatch` at a launch | the registry holds no such image, or the image is built for another platform than the pool's machines | push the image and use its digest; rebuild for the platform the message names |
+| 502 `UPSTREAM_ERROR` at a launch, naming an image | the image check could not complete | launch again: it is retryable |
 | 422 `pool_not_qualified` at a launch | a gating evaluation was placed on a pool configuration without an `approved`, `passed` qualification | Qualify a pool for gating evaluations |
-| attempt log shows an image that cannot be pulled | the image is not where that pool and task type can pull it | the table in Container registry access: move the image, or run the task on a pool that can pull it |
+| 422 on `compute-targets.connect`, the message says the pool does not provide the host Docker socket | a connected AWS pool whose job definitions do not mount the Docker socket was given training or simulation | the user updates the stack, then discover and connect again (`connected-aws.md`, Discover and connect) |
+| attempt log shows an image that cannot be pulled | the image is not where that pool and task type can pull it, or its container registry was revoked or narrowed since the launch | the table in Container registry access: move the image, restore the container registry, or run the task on a pool that can pull it |
 
 ## Done when
 

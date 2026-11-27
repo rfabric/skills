@@ -35,7 +35,7 @@ Apply `rfabric-basics` throughout: it defines what to tell the user at each mome
 ## Before you start
 
 - **Permissions** (as a refusal names them): `interactiveMediaSession:start` and `robot:intervene` to start and end a session; `interactiveMediaSession:manageSources` (with `robot:intervene` to add) for sources; `interactiveMediaSession:view` to read. `owner`, `admin` and `operator` carry all of them; `member` and `reviewer` only read.
-- **Needs**: the Robot enrolled, online and not in maintenance mode (`robot-enrollment`, `robot-maintenance`), running the `rfabricd` build with live video and a follower (step 2); a `ready` Artifact whose `inference_server` layer names an image repository (`artifact-build`). The image is the candidate a simulation suite runs: `rfabric-candidate serve` around the user's `Policy`; the same image serves the robot.
+- **Needs**: the Robot enrolled, online and not in maintenance mode (`robot-enrollment`, `robot-maintenance`), running the `rfabricd` build with live video and a follower (step 2); a `ready` Artifact whose `inference_server` layer names an image repository (`artifact-build`). The image is the candidate a simulation suite runs: `rfabric-candidate serve` around the user's `Policy`; the same image serves the robot. The source's pool pulls it by the rule of simulation and trainer images (`compute-setup`, Container registry access): in Amazon ECR or Google Artifact Registry through a connected container registry, checked before every run; on any other registry host it must be publicly readable.
 - **Ask the user**:
 
 | Input | Why | How to find it or default |

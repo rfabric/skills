@@ -46,9 +46,9 @@ Steps 2, 4 and 7 are written out per CI system. Read the one file for the user's
   - a published SimSuite: `simulation-suite`;
   - a compute pool that runs it, with a simulator: `compute-setup`, `simulator-setup`;
   - a controller image that runs as a suite's candidate: `artifact-build` says what the image must do;
-  - a registry the suite's pool can pull that image from. rFabric's managed pools pull from a repository that allows pulls without sign-in, or from a private repository in Amazon ECR or Google Artifact Registry connected as a container registry: `compute-setup`;
+  - a registry the suite's pool can pull that image from. On rFabric's pools and connected pools an image in Amazon ECR or Google Artifact Registry is pulled through the container registry connected to the workspace or its organization, and an image on any other registry host must be publicly readable: `compute-setup`;
   - on the CI side: rights to edit repository settings (variables, branch rules) and to push a pipeline file;
-  - only for a repository started with `rfabric eval init` (end of Decisions): read access to the rFabric candidate and simulator libraries (`rfabric-candidate`, `rfabric-simulator`). rFabric grants it; ask your rFabric contact before you start.
+  - only for an image build that installs a private rFabric Python package: read access to it, with one GitHub token for all of them (the secret RFABRIC_PACKAGES_TOKEN). They are `rfabric-candidate` and `rfabric-simulator` for a repository started with `rfabric eval init` (end of Decisions), and `rfabric-trainer` for a trainer image that installs it (`training.md`). rFabric grants it; ask your rFabric contact before you start.
 - **Ask the user**:
 
 | Input | Why | How to find it or default |

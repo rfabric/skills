@@ -106,7 +106,7 @@ A pipeline builds a new trainer image and writes it into the template at apply t
 2. the file's `defaultComputeConfig.image` and `codeVersion`;
 3. the template's stored image and `codeVersion`: a file without an image never clears the image a pipeline wrote.
 
-The build's commit (`commit` in `ci`) is never taken as `codeVersion`. On rFabric's managed pools a template whose image changes is checked on the pool a launch from it lands on, as at a launch (`trainer-image.md`, Where to push it).
+The build's commit (`commit` in `ci`) is never taken as `codeVersion`. On rFabric's pools and connected pools a template whose image changes is checked on the pool a launch from it lands on, as at a launch (`trainer-image.md`, Where to push it).
 
 ## Who manages a template
 
@@ -122,7 +122,7 @@ The build's commit (`commit` in `ci`) is never taken as `codeVersion`. On rFabri
 | `kind_not_requested` | the directory holds a file of another kind (an evaluation definition) | move it to the evaluation directory; the CLI names `rfabric eval apply` for it |
 | `reference_unresolved` | `poolRef`, `computeTargetRef` or a `simAssets` entry names nothing the workspace can use, or more than one; or a `launchTemplateImages` slug that no file holds | fix the name, or add the file |
 | `VALIDATION_ERROR` on `codeVersion` | `codeVersion` without an image | add the image, or drop `codeVersion` |
-| `container_registry_not_connected`, `image_access_denied`, `image_not_found`, `image_platform_mismatch` on `defaultComputeConfig.image` | the pool cannot read the new image, or it is built for other machines | `trainer-image.md`, Where to push it |
+| `container_registry_not_connected`, `image_access_denied`, `image_not_found`, `image_platform_mismatch` on `defaultComputeConfig.image` | rFabric cannot read the new image through the container registry, or it is built for another platform than the pool's machines | `trainer-image.md`, Where to push it |
 | `definition_repository_managed` | another repository or directory manages the slug | apply from the owning directory, or rename the slug |
 | `launch_template_in_use` on `deprecateRemoved` | an improvement program launches from a template the apply would delete; nothing was applied | `improvement-program`: point it at another template first, or keep the file |
 | `VALIDATION_ERROR` (422) on `kinds` | `launch_template` listed beside another kind, or a test run of templates | send `kinds` `["launch_template"]` alone; templates have no test run |

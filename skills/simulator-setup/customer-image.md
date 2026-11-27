@@ -20,13 +20,10 @@ The rule per pool and task type is in `compute-setup` (Container registry access
 
 | Pool that runs the attempts | Push the image to |
 | --- | --- |
-| rFabric's managed pools | a repository that allows pulls without sign-in, or a private repository in an Amazon ECR account or a Google Artifact Registry project connected as a container registry (`compute-setup`). A private image in any other registry cannot be pulled |
-| Pools of the user's connected Google Cloud project | that project's Artifact Registry (`compute-setup`, Container registry access, says how its machines get read access) |
-| Pools of a `self_hosted` target | any registry Docker on that host can pull from: the user runs `docker login <registry>` once as the user the worker runs as |
+| rFabric's pools and connected pools (the user's AWS account or Google Cloud project) | Amazon ECR or Google Artifact Registry, with that account or project connected as a container registry the workspace can use (`compute-setup`). The registry's cloud and the pool's cloud do not need to match. An image on any other registry host must be publicly readable |
+| Self-hosted pools and local Docker | any registry Docker on that host can pull from. rFabric issues no registry sign-in there: the host's own `docker login` decides what it can pull, so the user runs `docker login <registry>` once as the user the worker runs as |
 
-Simulation attempts do not run on pools of a connected AWS account: they stay on rFabric's managed pools (first row).
-
-Recommend Amazon ECR or Google Artifact Registry for a private image on managed pools, and connect it through `compute-setup` before the first launch.
+Recommend Amazon ECR or Google Artifact Registry for a private image, and connect it through `compute-setup` before the first launch.
 
 ## Build and push the image
 
@@ -77,7 +74,7 @@ Notes for filling it in:
 
 - The last `RUN` line imports the program at build time, so a missing dependency fails the build and not the first attempt. The image runs as user 10001.
 - Isaac Sim: the base image is `linux/amd64` only, about 30 GB, and its Python is `/isaac-sim/python.sh` (use `/isaac-sim/python.sh -m pip` and `/isaac-sim/python.sh -c`). It runs only on a machine with an NVIDIA RTX GPU.
-- `--platform`: rFabric's managed simulation pools run `linux/amd64`. For a pool of ARM machines build `linux/arm64` too; an image without a variant for the pool's platform is refused at launch with `image_platform_mismatch`.
+- `--platform`: rFabric's simulation pools run `linux/amd64`. For a pool of ARM machines build `linux/arm64` too; an image without a variant for the pool's platform is refused at launch with `image_platform_mismatch`.
 - The ECR repository must exist before the push (`aws ecr create-repository --repository-name <repository> --region <region>`).
 - Leave out the COPY and pip lines for the requirements file when the program needs no package beyond what the base image carries.
 - The exact signatures of the program contract are in the library the image carries: `docker run --rm <base image> python3 -c "import rfabric_simulator.program as p; help(p.SimulatorProgram)"`.

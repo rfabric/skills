@@ -1,24 +1,27 @@
 # Trainer image
 
-Read this for step 2 of `SKILL.md`, when no LaunchTemplate with the wanted image exists yet. It carries what the trainer must do, where the image goes, and the block that builds and pushes it.
+Read this for step 2 of `SKILL.md`, when no LaunchTemplate with the wanted image exists yet. It carries what a trainer image is, what the trainer must do, where the image goes, and the block that builds and pushes it.
 
-## What the image contains
+## What a trainer image is
+
+A trainer image is any container image that contains the training command, pinned by digest (`<repository>@sha256:<64 hex>`). It is not built from an rFabric image and contains no rFabric worker.
 
 | Part | What it is | Who provides it |
 | --- | --- | --- |
-| Training handler | downloads the DatasetVersions and staged sim assets, starts the trainer's command, reports progress and metrics, stores checkpoints, resumes the trainer after a machine is lost | rFabric: the handler image the trainer image is built `FROM` |
-| Trainer | the user's training code and its framework, installed into the handler's interpreter in `/opt/rfabric-worker` | the user |
+| Handler image | the image the compute machine starts. Its worker downloads the DatasetVersions, staged sim assets and base weights, pulls the trainer image, runs the template's `command` in it as a separate container, reports progress and metrics, stores checkpoints, and resumes the trainer after a machine is lost | rFabric. Nothing of it is in the trainer image |
+| Trainer image | the user's training code and its framework | the user |
+| Trainer library `rfabric-trainer` (Python module `rfabric_trainer`) | run config, datasets, progress and metrics, checkpoint requests, outputs | rFabric; the user's build installs it into the trainer image. Optional: a training command may speak the trainer protocol itself |
 
-Data, sim assets and base weights reach the run at launch: none of them belongs in the image.
+The trainer container gets no credentials, no worker token and no access to the cloud metadata endpoint; it has internet access. Data, sim assets and base weights reach it at launch, read-only: none of them belongs in the image. The directories the trainer writes to (checkpoint, output and cache) belong to the user the trainer container runs as, the image's `USER`. In a multi-node run every node pulls the trainer image itself, and the nodes share the worker's network.
 
-## Check the trainer against the handler
+## Check the trainer against the library
 
-The trainer talks to the handler through the Python module `rfabric_training_run.trainer`, present in the image. Check the user's trainer against it before the build:
+A trainer that uses the library imports it as `import rfabric_trainer as trainer`. Check the user's trainer against it before the build:
 
 | The trainer must | Call |
 | --- | --- |
 | read its parameters | `parameter(key, default, cast)`: the environment variable `TRAIN_<KEY>` (`TRAIN_BATCH_SIZE` for `batchSize`) wins over the run's parameter, which wins over the default |
-| read the data (imitation learning) | `dataset_versions()`, or `lerobot_frames(columns, split="train")` for LeRobot v3 numeric columns; a version with split labels yields only the asked split |
+| read the data (imitation learning) | `dataset_versions()`, or `lerobot_frames(columns, split="train")` for LeRobot v3 numeric columns (the image must hold `numpy` and `pyarrow` for it); a version with split labels yields only the asked split |
 | read staged simulation assets (reinforcement learning) | `sim_assets_dir()` |
 | report progress and metrics | `report_progress(step, total_steps=..., epoch=..., metrics=...)`: the numeric metrics become the run's metric series, and the steps feed the estimates of later launches |
 | save a checkpoint when asked | create `CheckpointRequests()` before the first progress report; when `take()` is true, write the files to `checkpoint_dir()`, then `checkpoint_done(step, ...)` |
@@ -28,72 +31,86 @@ The trainer talks to the handler through the Python module `rfabric_training_run
 
 A trainer that misses one of these still builds; the gap shows in the run (no metrics, no checkpoint, a restart from step 0). Tell the user which rows their trainer lacks and let them decide.
 
+A trainer without the library does the same through the trainer protocol (environment variables, progress lines on standard output, a checkpoint marker file), which the README of `rfabric/rfabric-trainer` states.
+
+## The trainer library
+
+`rfabric-trainer` lives in its own private repository `rfabric/rfabric-trainer` and is pinned by git tag: `rfabric-trainer @ git+https://github.com/rfabric/rfabric-trainer.git@v0.1.0`. No image and no package index carries it. The image build installs it with a GitHub token that reads that repository, passed as the BuildKit secret `github_token`: the token reaches one build step and stays out of the image.
+
+The token is the user's secret. It stays in their terminal or their CI secret store and never enters the conversation. With a shell, check that the variable the build reads is set without printing it (`test -n "$GITHUB_TOKEN"`); when it is not, the build stays with the user.
+
 ## Where to push it
 
 The pool's compute target decides (`compute-targets.get` with the pool's `computeTargetId`: `placement`):
 
 | Target | Push the image to |
 | --- | --- |
-| `managed` (rFabric's cloud) | a repository that allows pulls without sign-in, or rFabric's own registry. On managed Google Cloud pools, also a private Google Artifact Registry repository with two grants, where the deployment offers it: its project connected as a container registry the workspace can use (rFabric checks the image), and read access on the repository for rFabric's pull identity (the machines pull it); both in `compute-setup`, Container registry access. A private Amazon ECR repository is not offered on managed AWS pools yet, and a private image in any other registry cannot be pulled |
-| `connected`, the user's AWS account | a repository in that account's own Amazon ECR |
-| `connected`, the user's Google Cloud project | that project's Artifact Registry (`compute-setup`, Container registry access, says how its machines get read access) |
-| `self_hosted` | any registry Docker on that host can pull from: the user runs `docker login <registry>` once as the user the worker runs as |
+| `managed` (rFabric's pools) and `connected` (the user's AWS account or Google Cloud project) | Amazon ECR or Google Artifact Registry, with that account or project connected as a container registry the workspace can use (`compute-setup`, Container registry access). The image is pulled straight from that registry with a short-lived registry sign-in rFabric issues for that one run; nothing is copied. The registry's cloud and the pool's cloud do not need to match. An image on any other registry host must be publicly readable |
+| `self_hosted`, and local Docker | any registry Docker on that host can pull from. rFabric issues no registry sign-in there: the host's own `docker login` decides what it can pull, so the user runs `docker login <registry>` once as the user the worker runs as |
 
-The image holds the user's training code. When that code must not be publicly readable, train on a pool in a connected cloud account (`compute-setup`), or, on a managed Google Cloud pool that offers it, push it to a private Google Artifact Registry repository with the two grants above; say so before the build.
+The image holds the user's training code. When that code must not be publicly readable, push it to Amazon ECR or Google Artifact Registry and connect that account or project as a container registry; say so before the build.
 
 ## Build and push the image
 
-Fill in every value first. `<handler image>` is `imageDigest` of the handler image row (step 2 of `SKILL.md`): it is already pinned by digest. `<registry>/<repository>` is the user's repository from the table above. With a shell, run the commands of the block yourself after the user approves; without one, hand the block over. Before the registry sign-in of step 3, show which account the cloud CLI is signed in to (`aws sts get-caller-identity`, `gcloud config list account project`) and let the user confirm it is the right one.
+Fill in every value first. `<registry>/<repository>` is the user's repository from the table above. With a shell, run the commands of the block yourself after the user approves; without one, hand the block over. Before the registry sign-in of step 2, show which account the cloud CLI is signed in to (`aws sts get-caller-identity`, `gcloud config list account project`) and let the user confirm it is the right one.
 
 ```text
 Your turn - a terminal with Docker, in the directory of your trainer code
 Why: rFabric runs your training code as a container image you own. It pins the image by digest, so every run uses exactly these bytes.
-Who: someone with Docker (buildx) and push rights on the registry.
+Who: someone with Docker (buildx), push rights on the registry, and a GitHub token that reads rfabric/rfabric-trainer in the variable GITHUB_TOKEN.
 
-1. Check that you can pull the handler image:
-     docker pull --platform linux/amd64 <handler image>
+1. Put this Dockerfile beside your trainer (train.py):
 
-2. Put this Dockerfile beside your trainer (train.py):
-
-   ARG RFABRIC_HANDLER_TRAINING_RUN_IMAGE
-   FROM ${RFABRIC_HANDLER_TRAINING_RUN_IMAGE}
-   USER root
-   RUN --mount=from=ghcr.io/astral-sh/uv:python3.12-bookworm-slim,source=/usr/local/bin/uv,target=/usr/local/bin/uv \
-       uv pip install --python /opt/rfabric-worker/bin/python --no-cache <your framework>==<version>
+   ARG UV_IMAGE=ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
+   FROM ${UV_IMAGE} AS uv
+   FROM python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+   RUN --mount=from=uv,source=/usr/local/bin/uv,target=/usr/local/bin/uv \
+       uv pip install --system --no-cache <your framework>==<version>
+   RUN --mount=from=uv,source=/usr/local/bin/uv,target=/usr/local/bin/uv \
+       --mount=type=secret,id=github_token,required=true \
+       --mount=type=tmpfs,target=/run/gitconfig \
+       apt-get update && apt-get install -y --no-install-recommends git \
+       && export GIT_CONFIG_GLOBAL=/run/gitconfig/config \
+       && git config --global url."https://x-access-token:$(cat /run/secrets/github_token)@github.com/rfabric/".insteadOf "https://github.com/rfabric/" \
+       && uv pip install --system --no-cache 'rfabric-trainer @ git+https://github.com/rfabric/rfabric-trainer.git@v0.1.0' \
+       && apt-get purge -y --auto-remove git && rm -rf /var/lib/apt/lists/*
    COPY train.py /opt/trainer/train.py
+   RUN useradd --uid 10001 --user-group --create-home trainer
    USER 10001:10001
 
-3. Sign in to your registry.
+2. Sign in to your registry.
    Amazon ECR:
      aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
    Google Artifact Registry:
      gcloud auth configure-docker <location>-docker.pkg.dev
 
-4. Build for the pool's machines and push:
+3. Build for the pool's machines and push:
      docker buildx build --platform linux/amd64 --push \
-       --build-arg RFABRIC_HANDLER_TRAINING_RUN_IMAGE=<handler image> \
+       --secret id=github_token,env=GITHUB_TOKEN \
        -t <registry>/<repository>:<tag> .
 
-5. Read the digest:
+4. Read the digest:
      docker buildx imagetools inspect <registry>/<repository>:<tag>
    Copy the line "Digest: sha256:...".
 
-Creates: one image in your registry. Nothing changes in rFabric.
+Creates: one image in your registry. Nothing changes in rFabric, and rFabric gets no access from this step: a private registry is connected separately.
 Undo: delete the image tag in your registry. Do that only when no training configuration uses its digest.
 Bring back: <registry>/<repository>@sha256:<digest>
-Then I: create the training configuration with it and prove that the pool pulls it with a short first run.
+Then I: create the training configuration with it and preview a launch, which checks that rFabric can read the image.
 ```
 
 Notes for filling it in:
 
-- The handler runs the trainer's command with the interpreter in `/opt/rfabric-worker`, so the framework is installed into it, as the Dockerfile does. The image runs as user 10001.
-- The command of the LaunchTemplate must match the `COPY` line: `["python", "/opt/trainer/train.py"]` for this Dockerfile.
+- The first element of the LaunchTemplate's `command` is the program the trainer container starts, the rest are its arguments, so the command must match the `COPY` line: `["python", "/opt/trainer/train.py"]` for this Dockerfile.
+- The image's `USER` must name a user and group the image defines, as the `useradd` line does here: otherwise the run fails as `invalid` with code `image_user_not_found`.
+- A trainer without the library: leave out the second `RUN` step, the token in "Who" and the `--secret` line.
 - A GPU pool needs the GPU build of the framework (for PyTorch, its CUDA wheels); a CPU pool the CPU build.
+- `--platform`: build for the pool's machines. An image without a variant for their platform is refused at the launch with `image_platform_mismatch`.
 - The ECR repository must exist before the push (`aws ecr create-repository --repository-name <repository> --region <region>`).
-- For another registry, step 3 is that registry's own `docker login`. It asks for a password, so it stays with the user on every host.
+- For another registry, step 2 is that registry's own `docker login`. It asks for a password, so it stays with the user on every host.
 
 ## After the push
 
 1. Check the reference has the form `<registry>/<repository>@sha256:<64 hex>`. A tag is refused with `image_not_pinned` when the LaunchTemplate is created.
 2. Continue with step 3 of `SKILL.md`.
-3. Nothing has pulled the image yet: the first run proves it. Keep that run small (a few steps), and tell the user so.
+3. Nothing has pulled the image yet. On rFabric's pools and connected pools the preview's `trainerImage` check (step 4 of `SKILL.md`) reads it through the container registry and compares its platform with the pool's machines. On self-hosted and local Docker pools the check is `not_checked` and the first run proves the pull. Keep the first run small (a few steps), and tell the user so.

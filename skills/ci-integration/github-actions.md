@@ -160,11 +160,11 @@ Tell the user what the pull request shows, in this order. The check is named `rf
 
 While it waits, find the job with `evaluation-jobs.list`: `workspaceId` and `ciRef` `refs/pull/<number>/merge`.
 
-With a private repository the first run stops at the launch check with an image blocker naming ghcr.io (`image_access_denied`): the package is private and rFabric's managed pools pull from the GitHub Container Registry without signing in. Then:
+With a private repository the first run stops at the launch check with an image blocker naming ghcr.io (`image_access_denied`): the package is private, and rFabric's pools and connected pools pull from the GitHub Container Registry without signing in. Then:
 
 ```text
 Your turn - GitHub, package <repo>/controller
-Why: rFabric's pools pull this image without signing in, so the package must be public.
+Why: rFabric's pools and connected pools pull this image without signing in, so the package must be public.
 Who: an owner of the account or organization that owns the package. An organization can forbid public packages: then use Amazon ECR or Google Artifact Registry instead.
 
 1. On the repository's main page, under "Packages", open <repo>/controller.
