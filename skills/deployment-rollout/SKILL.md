@@ -1,12 +1,12 @@
 ---
 name: deployment-rollout
 description: >-
-  An Artifact running on the intended robots, rolled out in stages with a failure budget and a way back. Use when asked to deploy, ship, roll out or update a model or artifact on a robot, site or fleet, do a canary, preview a rollout, approve, start, advance, pause or cancel a deployment, see why it will not start, decide what to do after robots failed in a stage, roll back, or check which version each robot runs. Not for building the Artifact: that is `artifact-build`.
+  An Artifact running on the intended robots, installed or served from rFabric compute, rolled out in stages with a failure budget and a way back. Use when asked to deploy, ship, roll out or update a model or artifact on a robot, site or fleet, do a canary, preview, approve, start, advance, pause or cancel a deployment, see why it will not start, decide what to do after robots failed in a stage, roll back, or check which version each robot runs. Not for building the Artifact: that is `artifact-build`.
 ---
 
 # Deployment rollout
 
-The user ends up with a **Deployment** (`dpl_...`) in status `active`: one `ready` Artifact (`art_...`, the packaged model) delivered to a fleet, a site, one robot or a set of robots. Each robot has a **DeploymentTarget** (`dpt_...`) that reports its own delivery. Robots run `rfabricd`, which downloads the Artifact, verifies its SHA-256, switches to it atomically and keeps the previous version for rollback. An **Environment** (`env_...`) is an ordered tier of the organization (for example staging before production) that a fleet belongs to.
+The user ends up with a **Deployment** (`dpl_...`) in status `active`: one `ready` Artifact (`art_...`, the packaged model) delivered to a fleet, a site, one robot or a set of robots. Each robot has a **DeploymentTarget** (`dpt_...`) that reports its own delivery. With `inferencePlacement` `robot` (the default), robots run `rfabricd`, which downloads the Artifact, verifies its SHA-256, switches to it atomically and keeps the previous version for rollback. With `remote`, nothing is installed: the Artifact's `inference_server` image runs on rFabric compute as an inference source in each robot's session (InteractiveMediaSession, `ims_...`, as in `remote-inference`) and drives every action group of the robot. An **Environment** (`env_...`) is an ordered tier of the organization (for example staging before production) that a fleet belongs to.
 
 Deployment statuses: `pending` -> `approved` -> `rolling_out` -> `active`; ends otherwise in `failed`, `cancelled`, or `rolling_back` -> `rolled_back`.
 
@@ -35,6 +35,7 @@ When robots fail on the way: section "When robots fail".
 - **Needs**:
   - enrolled robots that report in: `robot-enrollment`, `fleet-inventory`;
   - a `ready` Artifact whose Model is `approved` or `deployed`: `artifact-build`, `model-release`;
+  - for `remote` placement: an Artifact with an `inference_server` image, and robots whose embodiment declares `maxRate` on each position group and whose follower is ready for a model (`remote-inference`, steps 2 and 3);
   - by default a passing evaluation under a `deployment_acceptance` protocol of the workspace, on the Artifact or its Model (start gate `evaluation_pass`, step 2): `simulation-suite` or `evaluation-job`.
 - **Ask the user**:
 
@@ -46,6 +47,13 @@ When robots fail on the way: section "When robots fail".
 | Who approves | the creator cannot approve their own deployment | a second person with `deployment:approve` |
 
 ## Decisions
+
+Where the model runs:
+
+| Option | Choose when | Consequence |
+| --- | --- | --- |
+| `inferencePlacement` `robot` (default) | the robot can run the model itself | robots download and switch; a rollback restores the previous version on the robot |
+| `inferencePlacement` `remote`, `inferencePool` `inference-cpu` (default) or `inference-gpu` | the model needs more than the robot has, or the user tries a model without installing it | each robot is driven from one compute machine per robot for as long as the target runs; a robot's previous remote deployment on the same session is superseded; a rollback or cancel stops the model and restarts nothing |
 
 How many robots change at once:
 
@@ -90,6 +98,7 @@ What happens when failed robots exceed the budget, in any stage:
 - `stages[].percentage` is cumulative, strictly increasing, and the last is 100. `immediate` takes no stages. Robots are assigned to stages in robot id order; to choose the canary robots yourself, deploy to them first as a `robot_set`.
 - `maxFailedTargets` is the number of failed robots tolerated over the whole deployment, not per stage: one more is a breach. `maxFailedTargetPercent` is the same as a share of all targets; the smaller of the two applies. Without `rollbackTriggers` there is no budget, and nothing stops by itself.
 - `excludeRobotIds` leaves robots out.
+- `inferencePlacement` `remote` with optional `inferencePool` (only with `remote`; with `robot` it is refused, `field` `inferencePool`). The dry run and create refuse a robot or Artifact that cannot run remotely, with the codes of `remote-inference` (Problems): `robot_embodiment_missing`, `embodiment_invalid`, `embodiment_motion_limit_missing`, `embodiment_incompatible`, `inference_server_missing`; `details` names the robot.
 
 Show the user the report as a short table:
 
@@ -149,9 +158,9 @@ A passing `deployment_acceptance` evaluation of the Artifact or its Model also a
 
 **Changes robots**
 
-- **Which**: the robots of stage 0 (`stages[0].robots` of the dry run; with `immediate`, every robot). Each downloads the Artifact, verifies it and switches to it. An offline robot switches when it reconnects.
+- **Which**: the robots of stage 0 (`stages[0].robots` of the dry run; with `immediate`, every robot). Each downloads the Artifact, verifies it and switches to it. An offline robot switches when it reconnects. With `remote` placement each robot's session gets the Artifact as its inference source, and the robot moves under the model once the source is ready: someone at each robot should have the emergency stop.
 - **By itself afterwards**: a budget breach acts without a person (`budgetBreachAction`). Say which it will be.
-- **Undo**: "Roll back", for every robot or for one: back to `previousArtifact`. With none, the undo is a new Deployment of the earlier Artifact.
+- **Undo**: "Roll back", for every robot or for one: back to `previousArtifact`. With none, the undo is a new Deployment of the earlier Artifact. With `remote` placement a rollback or cancel stops the model on those robots and does not start the previous one.
 
 `deployments.start`. It checks the four gates again and refuses with 409 at the first block (the message is the gate's reason; the refusal is recorded in `gateOutcomes`). On success the status is `rolling_out`.
 
@@ -170,6 +179,8 @@ A passing `deployment_acceptance` evaluation of the Artifact or its Model also a
 | `failed` | the robot did not take the Artifact and stays on the version it ran before; the robot's message is in `meta.lastError` |
 | `rolled_back` | the robot returned to the previous version, or was never sent the new one when the rollback started |
 | `waiting_for_window`, `deferred`, `attention_needed`, `expired` | reported by the robot; show the status with the target's `meta` (a deferral lists its unmet conditions) |
+
+A `remote` target reads differently: `applying` means its inference source was added to the robot's session (`interactiveMediaSessionId`, readable with `interactive-media-sessions.get`); `active` means the session is live and the source `ready`. `failed` carries `meta.lastError`: a robot refusal (`remote-inference`, Problems), `inference_source_left` (the source stopped while the session stayed open), `interactive_media_session_ended` (the session ended before the target was active), `roster_update_failed` (a roster change did not reach the robot, so its session was ended: check the robot, then retry the target), `interactive_media_roster_exhausted` (the robot's open session has given out every roster index: end it, then retry the target) or `interactive_media_session_start_failed`. A target whose robot a later remote deployment took over keeps its status and gets `meta.supersededByDeploymentId`.
 
 Report per stage, by robot name: `active`, failed, offline. Stop following after 15 minutes without a change and say how to resume: offline robots can take days.
 
@@ -265,7 +276,8 @@ An Environment is a tier a rollout advances through: a fleet receives an Artifac
 ## Next
 
 - `fleet-monitoring`: watch the robots on the new Artifact.
-- `evaluation-job`: evaluate the Artifact on a real robot, by hand.
+- `evaluation-job`: evaluate the Artifact on a real robot.
+- `remote-inference`: watch a `remote` target's session: which source drives, delay, takeover.
 - `model-release`: deprecate the superseded or rolled-back version.
 
 ## The rfabric CLI
@@ -273,8 +285,8 @@ An Environment is a tier a rollout advances through: a fleet receives an Artifac
 | Step | CLI |
 | --- | --- |
 | What a fleet can deploy | `rfabric fleet deployable-artifacts <fleet-id>` |
-| Dry run, create | `rfabric deployment dry-run --data @<file>`, `rfabric deployment create --data @<file>` |
+| Dry run, create | `rfabric deployment dry-run --data @<file>`, `rfabric deployment create --data @<file>`; add `--inference-placement remote [--inference-pool inference-gpu]` to run the model on rFabric compute |
 | Approve, start, advance | `rfabric deployment approve <deployment-id>`, `rfabric deployment start <deployment-id> --wait`, `rfabric deployment advance <deployment-id> --wait` |
 | Pause, resume, cancel | `rfabric deployment pause <deployment-id> --reason "<text>"`, `rfabric deployment resume <deployment-id>`, `rfabric deployment cancel <deployment-id>` |
 | Roll back | `rfabric deployment rollback <deployment-id> --reason "<text>" --wait` |
-| Read | `rfabric deployment get <deployment-id>`, `rfabric deployment-target ls` |
+| Read | `rfabric deployment get <deployment-id>`, `rfabric deployment-target ls` (column SESSION: a `remote` target's session) |

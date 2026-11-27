@@ -13,6 +13,7 @@ The user ends up with a robot recovered or driven by a person, and a session tha
 - **InterventionEvent** (`iev_...`): the durable record written when a session ends.
 - **Correction segment** (`ivsg_...`): a span of operator control kept as training data.
 - **Proposal** (`ivpr_...`): an action one participant proposes and another approves or rejects.
+- **InteractiveMediaSession** (`ims_...`): the robot's room (video, control, recording). Starting an intervention attaches it to the robot's open session, or starts one; `interactiveMediaSessionId` on the intervention names it. One session can hold several interventions and the models driving the robot (`remote-inference`).
 
 You prepare and follow the session. The person drives, in the operator console of the rFabric app. You never send motion, and you do not join the video.
 
@@ -36,7 +37,7 @@ Operator pools, routing rules, SLA configs, availability and auto-assignment: re
 
 ## Before you start
 
-- **Permissions** (as a refusal names them): `interventionSession:control` to request, claim, start, hand off, end, cancel and force release; `robot:intervene` in addition to claim; `interventionSession:view` to read and observe. The built-in role `operator` carries all three, as do `admin` and `owner`; `member` only views. Control calls need a signed-in person: a service identity is refused. The organization's gate policy for robot intervention can add rules to claiming, for example that the requester may not claim their own request.
+- **Permissions** (as a refusal names them): `interventionSession:control` to request, claim, start, hand off, end, cancel and force release; `robot:intervene` in addition to claim; `interventionSession:view` to read and observe; `interactiveMediaSession:view` to read the robot's session and its recording. The built-in role `operator` carries all of them, as do `admin` and `owner`; `member` only views. Control calls need a signed-in person: a service identity is refused. The organization's gate policy for robot intervention can add rules to claiming, for example that the requester may not claim their own request.
 - **Needs**: the Robot enrolled and online (`robot-enrollment`), `active` and not in maintenance mode (`robot-maintenance`), and prepared for remote control (step 2).
 - **Ask the user**:
 
@@ -54,17 +55,17 @@ These calls change who controls the robot. Before each one, in every step below,
 | Call | After it | Tell the user |
 | --- | --- | --- |
 | `intervention-sessions.claim` | the caller holds the session (`claimedOperatorId`): only they get a join token. The robot shows as teleoperated and the console refuses other operators. | "You now hold this robot. Nobody else can drive it until you end, hand off or are released." |
-| `intervention-sessions.start` | the robot is invited, joins, streams its cameras and accepts the holder's commands | "From now the robot can move under remote control. Someone at the robot should have the emergency stop." |
+| `intervention-sessions.start` | the holder joins the robot's open session as its highest-priority control source, or a session starts and the robot is invited; it streams its cameras and accepts the holder's commands. When a model drives the robot, the holder's first command to an arm takes that arm over | "From now the robot can move under remote control. Someone at the robot should have the emergency stop." |
 | `intervention-sessions.handoff` | nothing yet: both people are `handoff_pending` until the target decides | "You keep control until the other operator accepts." |
 | `intervention-sessions.handoff-decision` with `accept: true` | the caller becomes the holder and `primary`; the previous operator becomes an `observer` and their console stops driving | "Control moves to you. The previous operator should stop the robot first." |
 | `intervention-sessions.force-release` | a `claimed` session returns to `requested` with no holder; anyone allowed can claim it. It does not work on a `live` session. | "The operator loses the session before it went live." |
 | `intervention-operations.staffing-sessions-auto-assign` | the session is claimed for the first available qualifying operator, who did not ask for it | "An operator is assigned and must open the console." |
 | `intervention-operations.sweep` | every claim past its release time returns to `requested` with no holder; `live` sessions are untouched | "Operators whose claim is past its release time lose that session." |
-| `intervention-sessions.end` | the session is `completed`; the robot leaves, stops streaming and stops taking commands. An arm holds its present position: it does not return home or power down. | "Remote control ends now for whoever is driving." |
+| `intervention-sessions.end` | the session is `completed` and the holder leaves the robot's session. With no other control source left, that session ends too: the robot stops streaming and taking commands, and an arm holds its present position: it does not return home or power down. With a model still in the session (`remote-inference`), the model drives the arms again | "Remote control ends now for whoever is driving." Add, with a model in the session: "The model takes the robot back." |
 | `intervention-sessions.cancel` | a session that never went live is withdrawn; nobody had control | "The request is withdrawn. Nothing moves." |
 | "Teleoperate" in the operator console | the console requests, claims and starts in one go: the user holds the robot, and it can move once it joins | the lines for claim and start, inside the "Your turn" block of step 6 |
 
-If the robot loses its connection mid-session, the session becomes `failed` and the follower holds position once commands stop arriving. Remote control is not a safety system: the emergency stop at the robot is.
+If the robot loses its connection mid-session, the robot's session becomes `failed` (`robot_disconnected`), the intervention fails with it, and the follower holds position once commands stop arriving. Remote control is not a safety system: the emergency stop at the robot is.
 
 ## Steps
 
@@ -108,6 +109,8 @@ operator's input into motor commands. Without the follower the operator sees vid
    It documents a bimanual and a single-arm SO-101 on stock LeRobot. Install the follower into the
    Python environment the file names (the rfabric user must be able to read it), with the command it gives:
      uv pip install --python /opt/rfabric/arms/.venv/bin/python 'lerobot[feetech]' lerobot-teleoperator-rfabricd
+   Optional: add --teleop.home_pose='{<joint>: <position>, ...}' to RFABRIC_ARMS_ARGS, the pose Home
+   drives the arms to; a joint left out goes to 0.
 5. Apply: restart rfabricd so it reads the config, then start the follower now and at every boot:
      sudo systemctl try-restart rfabricd
      sudo systemctl enable --now rfabric-arms
@@ -122,7 +125,9 @@ Then I: confirm the robot is online again. The first session proves the follower
 before the console lets you move.
 ```
 
-Another follower, such as `rfabric-yam-bridge` for i2rt YAM arms, goes into the same `/etc/rfabric/arms.env` in place of the LeRobot command.
+Another follower, such as `rfabric-yam-bridge` for i2rt YAM arms (home pose: `--home`, or `--left-home` and `--right-home`), goes into the same `/etc/rfabric/arms.env` in place of the LeRobot command.
+
+When the robot has an `embodiment` in rFabric (`robots.get`; `remote-inference` declares it), it must name the follower's arms and joints in the follower's order, or the robot refuses every session (`embodiment_fingerprint_mismatch`). Its `maxRate` per arm also caps how fast the console's joint targets, joint jogs and Home move the arm. Such a robot does not offer gripper tip control (moving the gripper in space with the gamepad sticks or the gripper keys), because tip control would bypass `maxRate`: the operator drives each joint, and the gamepad's left stick drives the first two joints. A robot without an embodiment keeps tip control, with no limits.
 
 ### 3. Request the session
 
@@ -140,8 +145,8 @@ The session starts as `requested`.
 | `claimed` | an operator holds it; the robot has not joined |
 | `live` | the robot joined: video streams, the holder can drive, the recording runs |
 | `completed` | ended with an outcome; final |
-| `failed` | the robot left the session; final |
-| `cancelled` | withdrawn before it went live; final |
+| `failed` | the robot's session failed: the robot refused it, never joined, or left (`meta.failureReason`); final |
+| `cancelled` | withdrawn before it went live, or the robot's session ended first; final |
 
 ### 4. Claim it for the operator
 
@@ -162,9 +167,9 @@ To leave a claimed session before it is live: say that the request is withdrawn,
 
 2. `intervention-sessions.context`: the limits for this robot. Tell the user before they drive: `deadmanRequired` (hold a key to drive), `speedCapPercent`, `lockoutThresholdMs` and `lockoutReenableThresholdMs` (control locks when the round trip is slower than the first and returns below the second), `requireVerifiedStopPath` (no motion until the stop check passed).
 3. Confirm with the user that they are at the console and that someone at the robot has the emergency stop. Say first: from now the robot can move under remote control. Then `intervention-sessions.start` with an empty body. It runs the checks again and refuses on a failed one (422, the report is `preflight` in `details`), then invites the robot. Do not send `skipPreflight`.
-4. The status stays `claimed` until the robot joins. Poll `intervention-sessions.get` every 5 seconds for `live`, and tell the user you wait for the robot to join. The invite is valid for 5 minutes: if the session is still `claimed` after that, cancel it and see Problems.
+4. The response carries `interactiveMediaSessionId`: keep it. When the robot already is in that session (a model drives it, or another intervention runs), the intervention is `live` at once. Otherwise it stays `claimed` until the robot joins: poll `intervention-sessions.get` every 5 seconds for `live`, and tell the user you wait for the robot to join. The invite is valid for 5 minutes; then the robot's session fails (`invite_expired`) and the intervention with it: see Problems.
 
-From `live` the session is recorded.
+From `live` the robot's session records (its `recordingPolicy`; `full` unless whoever started it chose otherwise).
 
 ### 6. Drive
 
@@ -176,6 +181,7 @@ Why: you drive. I cannot send motion or see the video; I follow the session and 
    nobody else can drive it, and once it joins it can move under your control. Have someone at the robot
    with the emergency stop. (The button reads "Open console" when you already hold a session on this robot.)
 2. Wait for the video. The console checks that the robot stops on command; when the workspace requires it, you cannot move before it passes.
+   When a model drives this robot, your first command to an arm takes that arm over; the model keeps the arms you do not touch.
 3. When the workspace requires a deadman (`teleop.deadmanRequired`, on by default), hold Space to drive and release to stop; otherwise the keys and gamepad drive directly. Esc is the emergency stop: motion then stays off until you re-arm it.
    The keyboard icon lists the keys this robot accepts; a connected gamepad works too.
 4. When you are finished choose "End session" and pick how it went: Success, Partial, Failed or Re-record.
@@ -185,7 +191,7 @@ Bring back: tell me when you ended it, or the exact message on screen if somethi
 Then I: confirm the session is completed and report how it ended and whether it was recorded.
 ```
 
-Fill the limits from step 5; on the shortest path leave that line out. When you already claimed and started the session (steps 4 and 5), the button reads "Open console": replace action 1 with "choose Open console" and drop the sentence about the click. The console gets its own join token from `intervention-sessions.connect-token`: a credential for the robot's control channel, valid 5 minutes and issued only to the holder. Do not call that operation yourself, since the token would land in this conversation.
+Fill the limits from step 5; on the shortest path leave that line out. When you already claimed and started the session (steps 4 and 5), the button reads "Open console": replace action 1 with "choose Open console" and drop the sentence about the click. The console gets its own join token from `interactive-media-sessions.connect-token` for the intervention's `interactiveMediaSessionId`: a credential for the robot's room, valid 5 minutes and issued only to an operator in that session. Do not call that operation yourself, since the token would land in this conversation.
 
 ### 7. Follow, hand off, decide proposals
 
@@ -209,7 +215,7 @@ Done when `intervention-sessions.get` shows `completed` with the `outcome`.
 ### 9. Review: timeline, recording, corrections
 
 - **Timeline**: `timeline` on the session lists what happened with `at`, `kind` and the actor (`requested`, `claimed`, `start_invited`, `robot_joined`, `e_stop`, `re_arm`, `ended`, `cancelled`). `intervention-sessions.transitions` lists each status change with who caused it.
-- **Recording**: `recordingStatus` is `pending`, `recording`, `recorded`, `partial` (cut short) or `unrecorded` (`recordingFailureReason` says why). Report it with the session.
+- **Recording**: it belongs to the robot's session and covers all of it, which can be longer than the intervention. `interactive-media-sessions.get` with the intervention's `interactiveMediaSessionId`: `recordingStatus` is `pending`, `recording`, `recorded`, `partial` (cut short) or `unrecorded` (`recordingFailureReason` says why). Report it with the session. `interactive-media-sessions.recording-url` returns a download link valid 15 minutes, 404 when there is none.
 - **Correction segments**: `intervention-operations.sessions-correction-segments` records a span of operator control (`startedAt`, `endedAt`, `frameCount`) on the session's robot and episode. `intervention-operations.segments` lists them, newest first, with `query` `workspaceId` and optional `sessionId`, `robotId`, `since`, `until`, `page`, `limit` (up to 200); each carries its `controlStreamRef` and `episodeId`.
 - **Closing record**: `intervention-events.get` with the session's `interventionEventId`; `intervention-events.list` filters by `robotId`, `deploymentId`, `type`, `outcome`. An intervention that happened without a session (a person corrected the robot by hand) is logged with `intervention-events.create`.
 
@@ -234,8 +240,15 @@ All four take `workspaceId` and `since`, optional `until`, and the filters `robo
 | 403 naming `robot:intervene` or `interventionSession:control` | the user lacks the permission | name the permission; `member-access` finds why it is missing and what can add it |
 | `VALIDATION_ERROR` (422) on start, `preflight` in `details` | a readiness check failed | read each failed `check` and its `reason`; fix per the table in step 5 |
 | `stop_path` is `fail` or `warn` with a `reason` | `timeout` or "follower did not acknowledge stop": the follower is not answering. "no follower bridge active": the bridge is off or the session is not live. | on the robot check `rfabric-arms` and the `[lerobot_bridge]` section (step 2); the console retries the check |
-| still `claimed` 5 minutes after start | the robot did not join: it runs `rfabricd-core`, a camera failed, or it is offline | `robots.presence`; on the robot `sudo journalctl -u rfabricd -f` and ask for what it prints; cancel the session and request a new one |
-| `failed`, `meta` has `failureReason` `robot_disconnected` | the robot left mid-session; the follower holds position | check the robot and its network, then request a new session |
+| `failed`, `meta.failureReason` `invite_expired` or `invite_undeliverable` | the robot never joined: it runs `rfabricd-core`, a camera failed, or it is offline | `robots.presence`; on the robot `sudo journalctl -u rfabricd -f` and ask for what it prints; request a new session |
+| `failed`, `meta.failureReason` `robot_disconnected` | the robot left mid-session; the follower holds position | check the robot and its network, then request a new session |
+| `failed`, `meta.failureReason` `follower_unavailable` | the follower did not connect to rfabricd within 5 seconds | on the robot check `rfabric-arms` and `[lerobot_bridge]` (step 2) |
+| `failed`, `meta.failureReason` `embodiment_fingerprint_mismatch`, `embodiment_unsupported` or `invalid_payload` | the robot's `embodiment` in rFabric does not describe its follower | correct the embodiment (`remote-inference`, step 3) or set it to `null` with `robots.update` |
+| `failed`, `meta.failureReason` `session_busy`, `join_failed` or `expired_credentials` | the robot is still in an earlier session, or could not join the room in time | wait a minute and request a new session; on repeat, the robot's log as above |
+| `failed`, `meta.failureReason` `capability_unsupported` | the robot runs `rfabricd-core` | `robot-enrollment`, Decisions |
+| `failed`, `meta.failureReason` `follower_position_hold_missing`, `stop_path_unverified` or `embodiment_motion_limit_missing` | the session also holds a model, and the robot is not ready to run one | `remote-inference`, Problems |
+| `failed`, `meta.failureReason` `roster_update_failed` | an operator or source joining or leaving did not reach the robot (publish failed, refused, or unanswered for 60 seconds); the robot's session was ended so nobody keeps control they should not have | check the robot (`robots.presence`, its network), then request a new session |
+| 409 `interactive_media_roster_exhausted` on claim or start | the robot's open session has given out every roster index (0 to 254) | end that session (`interactive-media-sessions.end`), then claim or start again |
 | console says "Another operator holds this session." | the user is not `claimedOperatorId` | hand off or force release (step 7) |
 | console says "Out of service", "Robot is not online" or "Another operator is driving" | the robot is in maintenance mode, offline, or held | `robot-maintenance`, step 1, or step 7 |
 | 404 on `intervention-sessions.handoff` | the caller is not an active participant | only the current holder hands off |
@@ -247,13 +260,14 @@ All four take `workspaceId` and `since`, optional `until`, and the filters `robo
 
 - [ ] `intervention-sessions.get` shows the session `completed` with an `outcome`, or `cancelled` with its `cancelReason`, and no session of the robot is left `claimed` or `live` (`intervention-sessions.list` with `activeOnly: true`).
 - [ ] The user knows who held the robot and for how long (`liveAt` to `endedAt`).
-- [ ] You reported the session id, the `interventionEventId` and the `recordingStatus`.
+- [ ] You reported the session id, the `interventionEventId` and the `recordingStatus` of the robot's session.
 
 ## Next
 
 - `dataset-curation`: turn correction episodes into training data.
 - `robot-maintenance`: open a record when the intervention found a hardware fault.
 - `fleet-monitoring`: watch the robot after it returns to autonomy.
+- `remote-inference`: let a model drive the robot from rFabric compute, with an operator ready to take over.
 
 ## The rfabric CLI
 
@@ -263,6 +277,7 @@ All four take `workspaceId` and `since`, optional `until`, and the filters `robo
 | Claim, start | `rfabric intervention-session claim <session-id>`, `rfabric intervention-session start <session-id>` |
 | Readiness | `rfabric intervention-session preflight <session-id>` |
 | Follow | `rfabric intervention-session get <session-id>`, `rfabric intervention-session transitions <session-id>` |
+| Robot's session, recording | `rfabric interactive-media-session get <ims-id>`, `rfabric interactive-media-session recording-url <ims-id> --output value --query url` |
 | End, cancel | `rfabric intervention-session end <session-id> --outcome success [--reason "..."]`, `rfabric intervention-session cancel <session-id> --reason "..."` |
 | Correction segments | `rfabric intervention-segments query [--session-id <session-id>]` |
 | Analytics | `rfabric intervention-analytics summary\|model-delta\|workload\|funnel --since <RFC3339>` |
