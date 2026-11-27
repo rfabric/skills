@@ -44,6 +44,7 @@ Ask your agent in your own words; it picks the skill. The stages follow the loop
 | Evaluate | [`evaluation-job`](skills/evaluation-job/SKILL.md) | Evaluate a model or artifact; read the report, compare, reproduce |
 | Evaluate | [`evaluation-grading`](skills/evaluation-grading/SKILL.md) | Execute runs by hand at the robot and grade runs in the review queue |
 | Deploy | [`deployment-rollout`](skills/deployment-rollout/SKILL.md) | Roll an artifact out to robots in stages; pause, advance, roll back |
+| Deploy | [`remote-inference`](skills/remote-inference/SKILL.md) | Run an artifact on a robot from rFabric compute: the robot's embodiment, inference sources, takeover by an operator, end |
 | Operate | [`fleet-monitoring`](skills/fleet-monitoring/SKILL.md) | Fleet health, telemetry, and the evidence around a failure in the field |
 | Operate | [`alerting`](skills/alerting/SKILL.md) | Read, acknowledge, annotate and resolve open alerts |
 | Operate | [`robot-maintenance`](skills/robot-maintenance/SKILL.md) | Maintenance records, maintenance mode and exit checks, downtime |

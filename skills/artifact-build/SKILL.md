@@ -101,8 +101,9 @@ Then I: read the Artifact and confirm it is ready.
 
 What the image must do:
 
-- Hold code and libraries. Read the weights from `/rfabric/weights`: rFabric mounts the `weights` layer there read-only for a simulation run, and `rfabricd` points that path at the active version on a robot. An image may contain its weights instead; then there is no `weights` layer.
+- Hold code and libraries. Read the weights from `/rfabric/weights`: rFabric mounts the `weights` layer there read-only for a simulation run and for a remote inference source, and `rfabricd` points that path at the active version on a robot. An image may contain its weights instead; then there is no `weights` layer.
 - To run as the candidate of a simulation suite, answer the mission commands the simulator's adapter profile declares (`readiness`, `start`, `status`, `cancel`, each printing one JSON object): `simulator-setup`.
+- To serve a robot from rFabric compute as well (`remote-inference`), build on the `rfabric-candidate` library: register a `Policy` under the entry point group `rfabric_candidate.policies` and run `rfabric-candidate serve` as the image command. The same image then serves a simulator step by step and a robot in real time, and implements the mission commands.
 
 Verify: `artifacts.get` with the artifact id the register command printed.
 
@@ -242,7 +243,7 @@ Tell the user each layer's size before sending and report each layer as it compl
 
 ## Next
 
-- `simulation-suite`: run the Artifact as the candidate in simulation. `evaluation-job`: evaluate it on a real robot by hand, or as replay.
+- `simulation-suite`: run the Artifact as the candidate in simulation. `evaluation-job`: evaluate it on a real robot (served remotely or by hand), or as replay. `remote-inference`: drive a robot with it.
 - `model-release`: approve the model, when it was packaged before approval.
 - `deployment-rollout`: roll the Artifact out to robots in stages.
 - `ci-integration`: have CI build, register and evaluate on every change.

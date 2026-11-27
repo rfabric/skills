@@ -113,7 +113,7 @@ Two ways, same result:
     "statusFailuresMax": 3,
     "deadlines": { "SIMULATOR_READY": 180, "AUTONOMY_READY": 60, "WARMED": 60 },
     "preflight": { "minDiskFreeGb": 5, "minMemoryGb": 4 },
-    "transport": { "profile": "policy-bridge/2", "actionTimeoutS": 10 },
+    "transport": { "profile": "policy-bridge/1", "actionTimeoutS": 10 },
     "missionInterface": {
       "profile": "exec-json-v1",
       "name": "rfabric-candidate",
@@ -142,7 +142,7 @@ Two ways, same result:
 ```
 
 - `adapter` is the engine the program runs on: `gazebo`, `mujoco` or `isaac-sim`.
-- `missionInterface` is how rFabric drives the candidate: four commands that each print one JSON object. `rfabric-candidate` implements them for a candidate built on the same library (`artifact-build` covers packaging a candidate).
+- `missionInterface` is how rFabric drives the candidate: four commands that each print one JSON object. `rfabric-candidate` implements them for a candidate built on the `rfabric-candidate` library (a `Policy` under the entry point group `rfabric_candidate.policies`; `artifact-build` covers packaging a candidate).
 - `deadlines` are seconds allowed per stage of an attempt; raise `SIMULATOR_READY` for a slow-starting engine.
 - `clockStallS` must be greater than `actionTimeoutS`; a candidate that loads a large model needs both raised.
 - Size `resources` to what the program measured; simulator plus `autonomy` is what one machine must offer.
