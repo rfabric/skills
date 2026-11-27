@@ -49,7 +49,7 @@ Run rollouts by hand (steps 1 to 4), grade runs from their evidence (steps 5 to 
   | Adjudicate a disagreement | `evaluationReview:adjudicate` | `owner`, `admin` |
 
   A `grader` works on runs only: job operations, the grading summary included, answer 403. Runs of a protocol whose `resultVisibility` is `restricted` are closed to everyone without `evaluationDefinition:publish`.
-- **Needs**: an EvaluationJob with runs in `awaiting_execution` (launched by hand) or `awaiting_review` (a human-graded protocol): `evaluation-job`. At the robot: the robot, the policy to run, and the user in person.
+- **Needs**: an EvaluationJob with runs in `awaiting_execution` (launched by hand) or `awaiting_review` (a human-graded protocol, or a `real_robot` run served remotely): `evaluation-job`. At the robot, for by-hand runs: the robot, the policy to run, and the user in person.
 - **Ask the user**:
 
   | Input | Why | How to find it or default |
@@ -172,7 +172,7 @@ Done when no run of the job is `awaiting_execution` (`evaluation-jobs.progress`,
 
 ### 5. Read the review queue and claim a run
 
-For runs that have evidence to judge from (replay or simulation runs of a human-graded protocol).
+For runs that have evidence to judge from (replay or simulation runs of a human-graded protocol), and `real_robot` runs served remotely: every one of those waits here. Beside its evidence, such a run's room recording is on the robot's session (`interactive-media-sessions.recording-url`); not under a blind protocol, since the session names the Artifact.
 
 - `evaluation-runs.queue-stats` with `workspaceId`: `queueDepth` (runs waiting), `claimedDepth`, `agingCount` (waiting longer than `agingThresholdHours`).
 - The queue, oldest first: `evaluation-runs.list` with `query` `{"workspaceId": "wks_...", "status": "awaiting_review", "sort": "createdAt:asc"}`. Narrow with `protocolId`, `scenarioId` or `jobId`. A row with `claimedBy` set is someone else's.

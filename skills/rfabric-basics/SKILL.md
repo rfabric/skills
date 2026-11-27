@@ -192,7 +192,7 @@ Each skill is one workflow. The stages below follow the loop rFabric serves: set
 | Train | `training-run`, `experiment`, `external-training-run` |
 | Package | `model-release`, `artifact-build` |
 | Evaluate | `evaluation-definitions`, `evaluation-job`, `evaluation-grading` |
-| Deploy | `deployment-rollout` |
+| Deploy | `deployment-rollout`, `remote-inference` |
 | Operate | `fleet-monitoring`, `alerting`, `robot-maintenance`, `intervention-session` |
 | Automate | `policy-automation`, `improvement-program` |
 | Govern | `audit-review`, `data-governance`, `billing-usage` |

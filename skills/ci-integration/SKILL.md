@@ -48,7 +48,7 @@ Steps 2, 4 and 7 are written out per CI system. Read the one file for the user's
   - a controller image that runs as a suite's candidate: `artifact-build` says what the image must do;
   - a registry the suite's pool can pull that image from. rFabric's managed pools pull from a repository that allows pulls without sign-in, or from a private repository in Amazon ECR or Google Artifact Registry connected as a container registry: `compute-setup`;
   - on the CI side: rights to edit repository settings (variables, branch rules) and to push a pipeline file;
-  - only for a repository started with `rfabric eval init` (end of Decisions): read access to the rFabric simulator library. rFabric grants it; ask your rFabric contact before you start.
+  - only for a repository started with `rfabric eval init` (end of Decisions): read access to the rFabric candidate and simulator libraries (`rfabric-candidate`, `rfabric-simulator`). rFabric grants it; ask your rFabric contact before you start.
 - **Ask the user**:
 
 | Input | Why | How to find it or default |
@@ -82,7 +82,7 @@ Steps 2, 4 and 7 are written out per CI system. Read the one file for the user's
 | Trust (recommended) | GitHub Actions, GitLab CI, Bitbucket Pipelines, or another issuer whose tokens carry `repository_id`, `project_id` or `repositoryUuid` | nothing to store or rotate; only the named repository and refs can sign in |
 | Client secret | any other CI, or a self-managed CI that rFabric cannot reach over public https | a secret shown once, kept in the CI's secret store, rotated by hand |
 
-No repository yet: `rfabric eval init <name> --ci github|gitlab|bitbucket --adapter mujoco|gazebo|isaac-sim` writes a controller, a definition directory and the pipeline file. With a shell, run it yourself after the user approves; without one, hand it over as a "Your turn" block. Use that pipeline file in step 4 instead of the one in the CI system's file: it runs `dir`, so create two credentials. Its image build installs the rFabric simulator library and reads a GitHub token for it (the secret RFABRIC_SIMULATOR_TOKEN the file names; Needs). Then continue at step 2.
+No repository yet: `rfabric eval init <name> --ci github|gitlab|bitbucket --adapter mujoco|gazebo|isaac-sim` writes a controller, a definition directory and the pipeline file. With a shell, run it yourself after the user approves; without one, hand it over as a "Your turn" block. Use that pipeline file in step 4 instead of the one in the CI system's file: it runs `dir`, so create two credentials. Its image build installs the rFabric candidate and simulator libraries and reads a GitHub token for them (the secret RFABRIC_SIMULATOR_TOKEN the file names; Needs). Then continue at step 2.
 
 ## Steps
 

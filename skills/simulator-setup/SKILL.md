@@ -53,7 +53,7 @@ With a platform profile used as it is, steps 2 to 4 do not apply.
 | Input | Why | How to find it or default |
 | --- | --- | --- |
 | Simulator engine | selects the `adapter` | MuJoCo when they have an MJCF scene, Gazebo for SDF worlds and ROS 2 stacks, Isaac Sim for OpenUSD scenes and RTX rendering |
-| How the candidate talks to the simulator | selects the transport | `policy-bridge/2` unless their software is a ROS 2 stack (Decisions) |
+| How the candidate talks to the simulator | selects the transport | `policy-bridge/1` unless their software is a ROS 2 stack (Decisions) |
 | Whether the default simulator program can run their mission | platform image or customer image | default yes; no when the task needs simulator code of their own |
 | World and object files, with their licence | sim assets | local files, or a build from `sim-asset-build` |
 
@@ -71,7 +71,7 @@ With a platform profile used as it is, steps 2 to 4 do not apply.
 
 | Option | Choose when | Consequence |
 | --- | --- | --- |
-| `policy-bridge/2` (recommended) | the candidate is a policy or controller stepped by the simulator | lockstep: physics advances only when an action arrives, so a run is repeatable |
+| `policy-bridge/1` (recommended) | the candidate is a policy or controller stepped by the simulator | lockstep: physics advances only when an action arrives, so a run is repeatable |
 | `ros2` | the candidate is a ROS 2 Jazzy stack | the simulator publishes the clock and runs free at a real-time factor: not lockstep, not deterministic |
 
 | Adapter | Runs on | Platform profile slugs |
@@ -96,7 +96,7 @@ The `local-process` adapter is reserved to rFabric: creating, editing, cloning o
 | `capabilities`: `programs` | `default/1` means the default simulator program: missions are data, no simulator code |
 | `capabilities`: `formats` (`world`, `robot`) | the sim asset formats this simulator loads; a scenario with another format is refused at publish |
 | `capabilities`: `embodiment` | the action targets, control modes, state quantities, cameras and sensors a scenario may declare |
-| `transport` | `policy-bridge/2` or `ros2` |
+| `transport` | `policy-bridge/1` or `ros2` |
 | simulator `faultArgv` keys | the fault kinds a scenario may inject |
 | simulator and `autonomy` `resources` and `gpus` | the machine one attempt needs: both containers run on one machine, so vCPU, memory and GPUs add up |
 | `realTimeFactorMax` | fastest simulated-to-wall speed; a launch estimates each case at `limits.missionSimS` / `realTimeFactorMax` + 120 seconds of worker time |
@@ -125,7 +125,7 @@ Then edit the draft with `sim-adapter-profiles.update`. `spec` is one field: sen
 | What the image supports | `capabilities` | the document the image printed, or no `capabilities` at all when it printed an empty one (`customer-image.md`); never keep the platform profile's document for another program |
 | Label of the simulator build | `adapterVersion` | free text, for example the engine or program version |
 | Machine size | simulator and `autonomy` `resources` (`vcpu`, `memoryMiB`), `gpus`; `preflight` `minDiskFreeGb` | the sum must fit one machine of a pool that runs simulation attempts (step 8) |
-| Slow candidate (large model) | `transport` `actionTimeoutS`, `clockStallS`, `deadlines` | under `policy-bridge/2`, `clockStallS` must be greater than `actionTimeoutS` |
+| Slow candidate (large model) | `transport` `actionTimeoutS`, `clockStallS`, `deadlines` | under `policy-bridge/1`, `clockStallS` must be greater than `actionTimeoutS` |
 | Speed | `realTimeFactorMax` | set it to what the simulator reaches; it only sizes the worker-hour estimate |
 | Environment variables | simulator and `autonomy` `env` | never `ROS_DOMAIN_ID`, `ROS_AUTOMATIC_DISCOVERY_RANGE`, `ROS_STATIC_PEERS`, `RMW_IMPLEMENTATION`, `FASTDDS_BUILTIN_TRANSPORTS`, `RFABRIC_SIMULATOR_STATE_DIR`: rFabric sets them |
 

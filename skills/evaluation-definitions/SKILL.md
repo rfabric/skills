@@ -69,7 +69,7 @@ Definitions kept as files in the user's repository follow another path: read [de
 
 | Field | Options | Consequence |
 | --- | --- | --- |
-| `executionMode` | `real_robot`, `manual`, `replay`, `simulation` | `real_robot` and `manual`: a person runs each rollout on a physical robot and records it (`evaluation-job` launches both by hand, `evaluation-grading` records the runs); `replay` scores recorded episodes of a dataset version on compute; `simulation` launches only through a suite (`simulation-suite`) and needs `seeds` in `rolloutPlan` |
+| `executionMode` | `real_robot`, `manual`, `replay`, `simulation` | `real_robot`: each run serves the subject Artifact's `inference_server` image from rFabric compute to a target robot (`remote-inference`), and a person grades the run (`evaluation-grading`); `evaluation-job` can instead launch it by hand. `manual`: a person runs each rollout on a physical robot and records it (`evaluation-grading`); `replay` scores recorded episodes of a dataset version on compute; `simulation` launches only through a suite (`simulation-suite`) and needs `seeds` in `rolloutPlan` |
 | `gradingMode` | `scripted`, `human`, `simulator_oracle`, `hybrid` | `scripted` grades from the recorded state with the criteria expressions (for a by-hand run: from the facts the person reports); `simulator_oracle` grades in simulation; `human` parks every run until a person grades it (`evaluation-grading`); `hybrid` accepts both |
 | `protocolType` | one of ten, `smoke` to `deployment_acceptance` | `deployment_acceptance` is the gating type: a rollout's start gate asks for its passing report by default, and that report can approve a pending deployment (`deployment-rollout`); `smoke` and `regression` evidence expires under the retention budget |
 | `resultVisibility` | `workspace` (default), `restricted` | `restricted`: only holders of `evaluationDefinition:publish` read runs, evidence and scores; everyone else sees the conclusion only |
@@ -176,6 +176,7 @@ Criteria predicates, stage conditions, scenario constraints and metric expressio
 
 | Protocol runs | Body besides `subjectType` and `subjectId` | What runs |
 | --- | --- | --- |
+| on a real robot, served remotely | an Artifact subject, `executionTargetType` `robot` or `fleet`, `executionTargetId` | one run that drives the robot with the Artifact from `inference-cpu` compute and waits for a grader: `evaluation-grading` |
 | on a real robot, by hand | `executionMode` `"manual"` | one run that waits for a person at the robot: `evaluation-grading` |
 | as replay | `episodeSelection` | one run on the first selected episode |
 | in simulation | `simSuiteId`, `cellId` | every case of that suite in that cell; needs `simSuite:launch`; follow it as `simulation-suite` describes |

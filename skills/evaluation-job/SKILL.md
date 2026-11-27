@@ -1,7 +1,7 @@
 ---
 name: evaluation-job
 description: >-
-  A verdict (pass, fail or inconclusive) on a checkpoint, model or artifact from an EvaluationJob, with its report, exports and comparisons. Use when asked to evaluate or benchmark a model, preflight or launch an evaluation by hand on a real robot or as replay, estimate its cost, follow its progress, read or export the report (HTML, JSON, JUnit, CSV), find why runs failed, compare a candidate with a baseline, reproduce a run, schedule recurring evaluations, or cancel one. Not for simulation launches (`simulation-suite`) or grading runs (`evaluation-grading`).
+  A verdict (pass, fail or inconclusive) on a checkpoint, model or artifact from an EvaluationJob, with its report, exports and comparisons. Use when asked to evaluate or benchmark a model, preflight or launch an evaluation on a real robot, served remotely or by hand, or as replay, estimate its cost, follow its progress, read or export the report (HTML, JSON, JUnit, CSV), find why runs failed, compare a candidate with a baseline, reproduce a run, schedule recurring evaluations, or cancel one. Not for simulation launches (`simulation-suite`) or grading runs (`evaluation-grading`).
 ---
 
 # Evaluation job
@@ -25,7 +25,7 @@ Apply `rfabric-basics` throughout: it defines what to tell the user at each mome
 | 1 | Choose protocol and subject | agent, user confirms | `evaluation-protocols.list`, `checkpoints.list`, `models.list`, `artifacts.list`, `dataset-versions.list` | the user's choice |
 | 2 | Preflight and estimate | agent | `evaluation-jobs.preflight`, `evaluation-jobs.cost-estimate` | none |
 | 3 | Launch | agent | `evaluation-jobs.create` | none |
-| 4 | Follow the runs | agent; a person at the robot for by-hand runs; graders for human-graded runs | `evaluation-jobs.progress`, `evaluation-runs.list` | until the job is terminal: for replay at most runs x the protocol's `timeoutS`; for by-hand and human-graded runs, the time people take |
+| 4 | Follow the runs | agent; a person at the robot for real-robot runs; graders for human-graded and real-robot runs | `evaluation-jobs.progress`, `evaluation-runs.list` | until the job is terminal: for replay at most runs x the protocol's `timeoutS`; for real-robot and human-graded runs, the time people take |
 | 5 | Read the verdict | agent | `evaluation-jobs.get`, `evaluation-jobs.report` | none |
 | 6 | Diagnose failures | agent | `evaluation-jobs.failure-breakdown`, `evaluation-jobs.failure-clusters`, `evaluation-jobs.diagnostics`, `evaluation-jobs.operations`, `evaluation-runs.list`, `evaluation-runs.metric-results`, `evaluation-runs.failures` | none |
 | 7 | Export and re-score | agent | `evaluation-jobs.report-export`, `evaluation-reports.junit`, `evaluation-reports.reevaluate` | none |
@@ -50,7 +50,8 @@ Recurring evaluations and cancelling are sections of their own, below.
 - **Needs**:
   - a published protocol: `evaluation-definitions`;
   - a subject: a Checkpoint (`training-run`), a Model in `candidate`, `evaluated`, `approved` or `deployed` (`model-release`), or an Artifact that is `ready` (`artifact-build`);
-  - on a real robot: a person at the robot who runs the policy by hand and reports each run (`evaluation-grading`);
+  - on a real robot, served remotely: a protocol whose `gradingMode` is `human` or `hybrid`, an Artifact subject whose `inference_server` layer names an image, target robots online whose embodiment declares `maxRate` and whose follower is ready for a model (`remote-inference`, steps 2 and 3), a person at the robot with the emergency stop, and graders (`evaluation-grading`);
+  - on a real robot, by hand: a person at the robot who runs the policy and reports each run (`evaluation-grading`);
   - as replay: a DatasetVersion holding the episodes (`dataset-version`) and a compute pool that can run it (`compute-setup`).
 - **Ask the user**:
 
@@ -69,7 +70,8 @@ Recurring evaluations and cancelling are sections of their own, below.
 
   | `executionMode` | Launch | Consequence |
   | --- | --- | --- |
-  | `real_robot` | by hand: send `executionMode` `"manual"` in step 3 | every run waits in `awaiting_execution` until a person runs the policy on the robot and reports what happened (`evaluation-grading`); the report names who executed each run |
+  | `real_robot` | needs a protocol whose `gradingMode` is `human` or `hybrid`; send `executionTargetType` `robot` or `fleet` and `executionTargetId` in step 3; optional `inferencePool` | each run serves the Artifact from rFabric compute as an inference source in a target robot's session (`remote-inference`), one run per robot at a time. The source joins `standby` and stays `standby`: the robot drives it only inside its rollout, for the protocol's `timeoutS` (without one, until the run is aborted), and the source leaves when the run ends. The run then waits in `awaiting_review` for a grader (`evaluation-grading`) |
+  | `real_robot`, by hand | send `executionMode` `"manual"` in step 3 | every run waits in `awaiting_execution` until a person runs the policy on the robot and reports what happened (`evaluation-grading`); the report names who executed each run |
   | `manual` | by hand; nothing to add | the same |
   | `replay` | send `episodeSelection` | scores recorded episodes, no robot; runs on compute, which is billed |
   | `simulation` | not here (`simulation_requires_suite`) | launch and follow it in `simulation-suite`, then come back at step 5 for the verdict |
@@ -100,13 +102,14 @@ Then state the plan: runs, where, the time bound in hours (replay), and who must
 }
 ```
 
-- `executionMode` takes one value, `manual`. Send it for a `real_robot` protocol; leave it out for a `replay` or `manual` protocol.
+- `executionMode` takes one value, `manual`: a `real_robot` protocol run by hand. Leave it out for a `replay` or `manual` protocol, and for a `real_robot` protocol served remotely.
+- Served remotely: `subjectType` `artifact`, `executionTargetType` `robot` or `fleet` with `executionTargetId` (runs go round the target's online robots), and `inferencePool` `inference-cpu` (default) or `inference-gpu` (only for this mode; elsewhere `VALIDATION_ERROR`, `field` `inferencePool`). The robot shows a scenario's setup instructions in its log and does not wait for a person: set the scene up before each run.
 - `requestedRuns` must lie within the protocol's `minRuns` and `maxRuns`.
 - `baselineRuns` (with `baselineKind` `teleop_baseline` or `human_baseline`) adds runs a person performs as the reference. Only a human-graded protocol accepts them; the report keeps them apart from the subject's runs.
 - `seed` fixes the scenario assignment. For a protocol with a scenario, two jobs with the same `seed` and run count run the same cases and compare as pairs (step 8). Runs of a protocol without a scenario have no case and never pair.
 - `idempotencyKey` (8 to 200 characters): the same key with the same request returns the same job instead of launching twice.
 
-Before the call say what starts: runs that wait for a person at the robot, or compute that is billed. The job comes back `queued` with its runs created; give the user its `appUrl`.
+Before the call say what starts: runs that wait for a person at the robot, robots that move under the model (served remotely; one compute machine per robot while its run lasts), or compute that is billed. The job comes back `queued` with its runs created; give the user its `appUrl`.
 
 A by-hand job does not move by itself: continue with `evaluation-grading` (run each rollout, report it, grade it), then come back at step 5.
 
@@ -118,7 +121,7 @@ Poll `evaluation-jobs.progress` (every 30 seconds is enough) and report changes:
 
 | Run `status` | Tell the user |
 | --- | --- |
-| `pending` | waiting for compute |
+| `pending` | waiting for compute; served remotely: waiting for the robot's session and its inference source |
 | `awaiting_execution` | waiting for a person to run it at the robot: `evaluation-grading` |
 | `running` | executing |
 | `awaiting_review` | executed; waiting for a person to grade it: `evaluation-grading` |
@@ -131,6 +134,7 @@ Poll `evaluation-jobs.progress` (every 30 seconds is enough) and report changes:
 - A protocol with `stoppingRule` `confidence` or `sequential` can finish before all runs execute. Say so when it happens: it is not a failure.
 - A job that waits on people has no time limit. After 15 minutes without a change, stop polling, say who it waits for (`runsByStatus`), and that `evaluation-jobs.get` picks it up later.
 - One run: `evaluation-runs.list` with `jobId`, then `evaluation-runs.get`. Its timeline: `evaluation-runs.events` (page with `offset`), or live with `evaluation-runs.timeline-stream`. Its files: `evaluation-runs.evidence`, and `evaluation-runs.evidence-download-url` for a download URL valid until its `expiresAt`. Compute attempts of a replay run: `evaluation-runs.attempts`, logs with `compute-attempts.logs`.
+- A run served remotely: `interactiveMediaParticipantId` names its inference source; the robot's session holding it is in `interactive-media-sessions.list` with the run's `robotId` (watch it as `remote-inference` step 7). Its timeline shows which source drove each action group, holds, stops and operator takeovers. `evaluation-runs.abort` stops it: say first that the model stops driving that robot.
 - Let the list select runs; never filter pages in your own code. `query` keys beside `jobId`: `outcome` and `failureCategory` (one value, or `{"in": [...]}` for several), `stoppedAtStage`, `safetyPass`, `dimension` (step 6), `replaced` `false` (one run per slot: leaves out runs a retry replaced), `sort` `durationS:desc`. The unsuccessful runs: `{"jobId": "evj_...", "outcome": {"in": ["failure", "timeout", "aborted"]}, "replaced": false}`.
 
 ### 5. Read the verdict
@@ -214,7 +218,7 @@ Evidence does not stay forever: `evaluation-retention.list-budgets` shows, in da
 
 `evaluation-schedules.create` with `name`, `protocolId`, the subject, `intervalS` (60 or more) and optionally `startAt`, `requestedRuns`, `enabled`.
 
-- A schedule runs the protocol as defined, without the by-hand override: use it for `replay` protocols and for protocols whose own `executionMode` is `manual`.
+- A schedule runs the protocol as defined, without the by-hand override: use it for `replay` protocols, protocols whose own `executionMode` is `manual`, and `real_robot` protocols served remotely to a robot or fleet target (their runs use `inference-cpu`).
 - Before the call say what recurs: every interval a job starts and uses compute, or waits for a person at the robot, until the schedule is disabled.
 - Each occurrence is an ordinary job. It pins the newest published version of the protocol at launch, and runs with the launch permissions its creator had when the schedule was created.
 - Without `startAt` the first occurrence is one interval from now. A schedule that fell behind launches once, not once per missed interval.
@@ -234,7 +238,12 @@ Evidence does not stay forever: `evaluation-retention.list-budgets` shows, in da
 | `protocol_not_found`, `protocol_not_published` | the protocol is not visible to the workspace, or is a draft or deprecated | pick a published version, or publish (`evaluation-definitions`) |
 | `subject_type_mismatch`, `subject_not_found`, `subject_not_evaluable` | the id does not match `subjectType`, names nothing, or the subject's state does not allow evaluation | correct the id; for a Model or Artifact fix its state (`model-release`, `artifact-build`) |
 | `requested_runs_out_of_bounds` | `requestedRuns` is outside `minRuns` to `maxRuns` | change the count, or publish another protocol version |
-| `target_unresolved` | a `real_robot` protocol was launched without the by-hand override | send `executionMode` `"manual"` |
+| `target_unresolved` | a `real_robot` job without `executionTargetType` `robot` or `fleet`, or a target with no online robot | name a robot or fleet with robots online, or send `executionMode` `"manual"` |
+| `subject_not_runnable` | served remotely, the subject is not an Artifact with an `inference_server` image | evaluate the Artifact (`artifact-build`), or run it by hand |
+| `robot_embodiment_missing`, `embodiment_invalid`, `embodiment_motion_limit_missing`, `embodiment_incompatible` | a target robot cannot run the Artifact remotely; the message names it | `remote-inference`, step 3 and Problems |
+| `grading_mode_unsupported` | served remotely on a real robot, the protocol's `gradingMode` is not `human` or `hybrid`: a person grades every real-robot run | choose a `human` or `hybrid` protocol, or run it by hand (`executionMode` `"manual"`) |
+| Run `aborted`, `abortReason` `inference_source_left`, `interactive_media_session_ended`, `roster_update_failed` or a robot refusal code | the source or the robot's session stopped before the run started; `roster_update_failed`: a roster change did not reach the robot, so its session was ended | `remote-inference`, Problems; then `evaluation-jobs.reproduce` or a new job |
+| Run stays `pending`; its `meta` has `dispatch` with `failed` `interactive_media_roster_exhausted` | the robot's open session has given out every roster index (0 to 254), so the run's source cannot join | end that session (`interactive-media-sessions.end`); the next sweep (`evaluation-jobs.dispatch-sweep`) starts the run |
 | `permission_denied` | the launch permission is missing; the message names it | an organization admin grants it |
 | `replay_selection_missing`, `replay_selection_empty`, `replay_selection_invalid` | a replay protocol without episodes, a selection that matches none, or a selection on a protocol that is not replay | fix `episodeSelection` |
 | `baseline_not_supported` | `baselineRuns` on a protocol that is not human-graded | drop them |
@@ -273,7 +282,7 @@ Evidence does not stay forever: `evaluation-retention.list-budgets` shows, in da
 | --- | --- |
 | Preflight | `rfabric eval run --protocol <id or slug> --subject-type <type> --subject <id> --preflight` |
 | Cost estimate | `rfabric evaluation-job cost-estimate --protocol <protocol-id> [--runs <n>]` |
-| Launch | `rfabric eval run --protocol <id or slug> --subject-type <type> --subject <id> [--execution manual] [--episodes-version <dsv-id>] [--runs <n>] [--wait]` |
+| Launch | `rfabric eval run --protocol <id or slug> --subject-type <type> --subject <id> [--execution manual] [--target-type robot\|fleet --target <id> [--inference-pool inference-cpu\|inference-gpu]] [--episodes-version <dsv-id>] [--runs <n>] [--wait]` |
 | Retry a run | `rfabric evaluation-run retry <run-id> [--force]` |
 | Follow | `rfabric eval follow <job-id>`, `rfabric evaluation-job progress <job-id>` |
 | Report; exits non-zero unless `pass` | `rfabric eval report <job-id> [--format junit]`, `rfabric eval gate <job-id>` |
